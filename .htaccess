@@ -1,39 +1,101 @@
-# Sécurité : bloquer l'accès direct aux dossiers sensibles
+# Configuration Apache pour SGC-AgentOne
+# Compatible : XAMPP local, serveur mutualisé, sous-dossiers
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
-
-    # Bloquer l'accès au dossier core/
-    RewriteRule ^core/ - [F,L]
-
-    # Bloquer l'accès au dossier api/ sauf pour les requêtes internes (gérées par PHP)
-    # Les API doivent être appelées via POST/GET depuis l'interface, pas directement en navigateur
-    # Mais on autorise l'accès pour les tests ; en production, ce fichier est optionnel (Apache seulement)
     
-    # Bloquer l'accès aux logs
+    # Détection automatique de la base URL
+    RewriteBase /
+
+    # Redirection principale : tout vers index.php sauf exceptions
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} !^/api/
+    RewriteCond %{REQUEST_URI} !^/extensions/webview/
+    RewriteCond %{REQUEST_URI} !^/core/logs/
+    RewriteRule ^(.*)$ index.php [QSA,L]
+    
+    # Sécurité : bloquer l'accès direct aux dossiers sensibles
+    RewriteRule ^core/ - [F,L]
     RewriteRule ^core/logs/ - [F,L]
-
-    # Bloquer l'accès aux outils de blind-exec
     RewriteRule ^core/tools/blind-exec/ - [F,L]
-
-    # Bloquer l'accès aux prompts
     RewriteRule ^prompts/ - [F,L]
-
-    # Bloquer l'accès aux fichiers de configuration sensibles
     RewriteRule ^core/config/settings.json$ - [F,L]
     RewriteRule ^core/config/rules.json$ - [F,L]
     RewriteRule ^core/config/whitelist.json$ - [F,L]
-
-    # Autoriser l'accès aux vues web (dans extensions/webview/)
-    # Elles sont accessibles car servies par index.php via iframe
+    
+    # Autoriser explicitement les ressources nécessaires
+    RewriteRule ^extensions/webview/ - [L]
+    RewriteRule ^api/ - [L]
+    
+    # Headers de sécurité
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+    Header always set X-XSS-Protection "1; mode=block"
 </IfModule>
 
-# Empêcher l'affichage des fichiers de liste
+# Configuration générale
 Options -Indexes
-
-# Forcer UTF-8
 AddDefaultCharset UTF-8
 
-# Compression GZIP pour les fichiers statiques
+# Gestion des erreurs personnalisées
+ErrorDocument 403 /index.php?error=403
+ErrorDocument 404 /index.php?error=404
+ErrorDocument 500 /index.php?error=500
+
+# Types MIME pour les ressources web
+<IfModule mod_mime.c>
+    AddType text/css .css
+    AddType application/javascript .js
+    AddType application/json .json
+    AddType text/html .html
+</IfModule>
+
+# Compression GZIP
 <IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+    AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+# Cache pour les ressources statiques
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>
+
+# Sécurité supplémentaire
+<Files "*.log">
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files "*.json">
+    <RequireAll>
+        Require all denied
+        Require local
+    </RequireAll>
+</Files>
+
+# Permettre les requêtes CORS pour l'API (environnement de développement)
+<IfModule mod_headers.c>
+    SetEnvIf Origin "^http(s)?://localhost(:[0-9]+)?$" CORS_ALLOW_ORIGIN=$0
+    SetEnvIf Origin "^http(s)?://127\.0\.0\.1(:[0-9]+)?$" CORS_ALLOW_ORIGIN=$0
+    Header always set Access-Control-Allow-Origin %{CORS_ALLOW_ORIGIN}e env=CORS_ALLOW_ORIGIN
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Allow-Credentials true
 </IfModule>

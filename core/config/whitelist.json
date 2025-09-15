@@ -1,0 +1,9 @@
+[
+  "createFile",
+  "createDir",
+  "readFile",
+  "listDir",
+  "serverStatus",
+  "serverLogs",
+  "openBrowser"
+]

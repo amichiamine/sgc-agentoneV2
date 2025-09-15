@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestionnaire de Prompts - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #header { padding: 12px 16px; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); display: flex; align-items: center; justify-content: space-between; }
+        #header h2 { margin: 0; font-weight: 500; }
+        #new-prompt-btn { padding: 8px 16px; border: none; border-radius: 8px; background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); cursor: pointer; font-weight: bold; transition: all 0.2s ease; }
+        #new-prompt-btn:hover { background: hsl(188, 95%, 48%); }
+        #prompts-list { flex: 1; overflow-y: auto; padding: 16px; gap: 12px; display: flex; flex-direction: column; }
+        .prompt-card {
+            background: hsl(215, 28%, 17%);
+            border: 1px solid hsl(217, 19%, 20%);
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 
+                4px 4px 8px hsl(222, 84%, 2%),
+                -4px -4px 8px hsl(215, 28%, 22%);
+        }
+        .prompt-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                6px 6px 12px hsl(222, 84%, 2%),
+                -6px -6px 12px hsl(215, 28%, 24%);
+        }
+        .prompt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .prompt-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: hsl(188, 95%, 42%);
+            margin: 0;
+            word-wrap: break-word;
+            max-width: 70%;
+        }
+        .prompt-file {
+            font-size: 0.85rem;
+            color: hsl(217, 10%, 58%);
+            font-style: italic;
+            margin: 4px 0 8px 0;
+            word-wrap: break-word;
+            max-width: 90%;
+        }
+        .prompt-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .prompt-actions button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+            transition: all 0.2s ease;
+        }
+        .prompt-actions button:hover {
+            background: hsl(215, 16%, 30%);
+        }
+        .prompt-actions button.execute {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        .prompt-actions button.execute:hover {
+            background: hsl(188, 95%, 48%);
+        }
+        .prompt-actions button.delete {
+            background: hsl(310, 100%, 20%);
+            color: hsl(310, 100%, 75%);
+        }
+        .prompt-actions button.delete:hover {
+            background: hsl(310, 100%, 25%);
+        }
+        .prompt-actions button.edit {
+            background: hsl(113, 54%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        .prompt-actions button.edit:hover {
+            background: hsl(113, 54%, 48%);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: hsl(217, 10%, 58%);
+            font-style: italic;
+        }
+        .empty-state p {
+            margin: 16px 0;
+        }
+        #upload-area {
+            border: 2px dashed hsl(217, 19%, 20%);
+            border-radius: 8px;
+            padding: 32px;
+            text-align: center;
+            margin: 16px 0;
+            background: hsl(222, 84%, 8%);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        #upload-area:hover {
+            border-color: hsl(188, 95%, 42%);
+            background: hsl(222, 84%, 10%);
+        }
+        #upload-area input[type="file"] {
+            display: none;
+        }
+        #editor-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        #editor-content {
+            background: hsl(215, 28%, 17%);
+            border: 1px solid hsl(217, 19%, 20%);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: auto;
+            padding: 16px;
+            position: relative;
+        }
+        #editor-content textarea {
+            width: 100%;
+            height: 80%;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            background: hsl(222, 84%, 4%);
+            color: hsl(210, 40%, 95%);
+            border: none;
+            outline: none;
+            padding: 12px;
+            resize: none;
+            line-height: 1.6;
+            tab-size: 2;
+        }
+        #editor-controls {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        #editor-controls button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        #editor-controls button.save {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        #editor-controls button.save:hover {
+            background: hsl(188, 95%, 48%);
+        }
+        #editor-controls button.cancel {
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+        }
+        #editor-controls button.cancel:hover {
+            background: hsl(215, 16%, 30%);
+        }
+        #close-editor {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: none;
+            color: hsl(210, 40%, 95%);
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            #header { flex-direction: column; align-items: flex-start; gap: 8px; }
+            #new-prompt-btn { width: 100%; }
+            .prompt-card { padding: 12px; }
+            .prompt-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+            .prompt-title { max-width: 100%; }
+            .prompt-file { max-width: 100%; }
+            #upload-area { padding: 24px; }
+            #editor-content { width: 95%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>📝 Gestionnaire de Prompts</h2>
+        <button id="new-prompt-btn">➕ Nouveau Prompt</button>
+    </div>
+
+    <div id="upload-area">
+        <p>Glissez-déposez un fichier .md ici ou cliquez pour sélectionner</p>
+        <input type="file" id="upload-input" accept=".md">
+    </div>
+
+    <div id="prompts-list">
+        <!-- Prompts dynamiques -->
+    </div>
+
+    <div id="editor-modal">
+        <div id="editor-content">
+            <button id="close-editor">×</button>
+            <textarea id="prompt-editor" spellcheck="false"></textarea>
+            <div id="editor-controls">
+                <button class="cancel">Annuler</button>
+                <button class="save">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const promptsList = document.getElementById('prompts-list');
+        const newPromptBtn = document.getElementById('new-prompt-btn');
+        const uploadArea = document.getElementById('upload-area');
+        const uploadInput = document.getElementById('upload-input');
+        const editorModal = document.getElementById('editor-modal');
+        const promptEditor = document.getElementById('prompt-editor');
+        const closeEditorBtn = document.getElementById('close-editor');
+        const saveEditorBtn = document.getElementById('save-editor');
+        const cancelEditorBtn = document.getElementById('cancel-editor');
+
+        let currentPromptFile = '';
+
+        // Charger les prompts depuis le dossier prompts/
+        async function loadPrompts() {
+            promptsList.innerHTML = '<div class="empty-state"><p>Aucun prompt n’est encore défini.</p><p>Uploadez un fichier .md ou créez-en un nouveau.</p></div>';
+
+            try {
+                const response = await fetch('/api/files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'listDir', path: 'prompts' })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    promptsList.innerHTML = '<div class="empty-state"><p>Erreur lors de la lecture du dossier prompts/</p><p>' + data.error + '</p></div>';
+                    return;
+                }
+
+                if (data.items.length === 0) {
+                    promptsList.innerHTML = '<div class="empty-state"><p>Aucun prompt n’est encore défini.</p><p>Uploadez un fichier .md ou créez-en un nouveau.</p></div>';
+                    return;
+                }
+
+                promptsList.innerHTML = '';
+                data.items.forEach(item => {
+                    if (item.name.endsWith('.md')) {
+                        renderPromptCard(item.name);
+                    }
+                });
+            } catch (e) {
+                promptsList.innerHTML = '<div class="empty-state"><p>Erreur réseau ou serveur inaccessible.</p></div>';
+            }
+        }
+
+        // Rendu d'une carte de prompt
+        function renderPromptCard(filename) {
+            const card = document.createElement('div');
+            card.className = 'prompt-card';
+
+            const header = document.createElement('div');
+            header.className = 'prompt-header';
+
+            const title = document.createElement('h3');
+            title.className = 'prompt-title';
+            title.textContent = filename.replace(/\.md$/, '');
+
+            const file = document.createElement('div');
+            file.className = 'prompt-file';
+            file.textContent = 'prompts/' + filename;
+
+            header.appendChild(title);
+            header.appendChild(file);
+
+            const actions = document.createElement('div');
+            actions.className = 'prompt-actions';
+
+            const executeBtn = document.createElement('button');
+            executeBtn.className = 'execute';
+            executeBtn.textContent = '▶️ Envoyer au Chat';
+            executeBtn.addEventListener('click', () => {
+                sendPromptToChat(filename);
+            });
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'edit';
+            editBtn.textContent = '✏️ Éditer';
+            editBtn.addEventListener('click', () => {
+                openPromptEditor(filename);
+            });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete';
+            deleteBtn.textContent = '🗑️ Supprimer';
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Êtes-vous sûr de vouloir supprimer « ' + filename + ' » ?')) {
+                    fetch('/api/files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'deleteFile', path: 'prompts/' + filename })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) loadPrompts();
+                        else alert('Erreur : ' + data.error);
+                    });
+                }
+            });
+
+            actions.appendChild(executeBtn);
+            actions.appendChild(editBtn);
+            actions.appendChild(deleteBtn);
+
+            card.appendChild(header);
+            card.appendChild(actions);
+
+            card.addEventListener('dblclick', () => {
+                sendPromptToChat(filename);
+            });
+
+            promptsList.appendChild(card);
+        }
+
+        // Envoyer un prompt au chat
+        async function sendPromptToChat(filename) {
+            const response = await fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'readFile', path: 'prompts/' + filename })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                alert('Erreur : ' + data.error);
+                return;
+            }
+
+            // Extraire le contenu brut et l'envoyer au chat
+            const content = data.content;
+            window.parent.postMessage({ type: 'SEND_PROMPT', content }, '*');
+            
+            // Fermer l'éditeur si ouvert
+            editorModal.style.display = 'none';
+        }
+
+        // Ouvrir l'éditeur de prompt
+        function openPromptEditor(filename) {
+            currentPromptFile = filename;
+            fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'readFile', path: 'prompts/' + filename })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    promptEditor.value = data.content;
+                    editorModal.style.display = 'flex';
+                } else {
+                    alert('Erreur : ' + data.error);
+                }
+            });
+        }
+
+        // Sauvegarder le prompt édité
+        async function savePrompt() {
+            const content = promptEditor.value.trim();
+            if (!content) {
+                alert('Le prompt ne peut pas être vide.');
+                return;
+            }
+
+            fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'createFile', path: 'prompts/' + currentPromptFile, content: content })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    editorModal.style.display = 'none';
+                    loadPrompts(); // Rafraîchit la liste
+                } else {
+                    alert('Erreur : ' + data.error);
+                }
+            });
+        }
+
+        // Créer un nouveau prompt via formulaire
+        newPromptBtn.addEventListener('click', () => {
+            const name = prompt('Nom du nouveau prompt (sans .md) :');
+            if (!name) return;
+
+            const filename = name + '.md';
+            const defaultContent = `### ${name}
+Action: createFile
+Cible: 
+Contenu: 
+
+Action: createDir
+Cible: 
+Contenu: `;
+            
+            fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'createFile', path: 'prompts/' + filename, content: defaultContent })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    loadPrompts();
+                } else {
+                    alert('Erreur : ' + data.error);
+                }
+            });
+        });
+
+        // Upload de fichier .md
+        uploadArea.addEventListener('click', () => {
+            uploadInput.click();
+        });
+
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !file.name.endsWith('.md')) {
+                alert('Veuillez sélectionner un fichier .md');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', 'prompts/');
+
+            const response = await fetch('/api/files?action=uploadFile', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                uploadInput.value = ''; // Réinitialiser le champ
+                loadPrompts();
+            } else {
+                alert('Erreur : ' + result.error);
+            }
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.style.borderColor = 'hsl(188, 95%, 42%)';
+            uploadArea.style.backgroundColor = 'hsl(222, 84%, 10%)';
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.style.borderColor = 'hsl(217, 19%, 20%)';
+            uploadArea.style.backgroundColor = 'hsl(222, 84%, 8%)';
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.style.borderColor = 'hsl(217, 19%, 20%)';
+            uploadArea.style.backgroundColor = 'hsl(222, 84%, 8%)';
+
+            const file = e.dataTransfer.files[0];
+            if (!file || !file.name.endsWith('.md')) {
+                alert('Veuillez déposer un fichier .md');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', 'prompts/');
+
+            fetch('/api/files?action=uploadFile', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    loadPrompts();
+                } else {
+                    alert('Erreur : ' + result.error);
+                }
+            });
+        });
+
+        // Gestion de l'éditeur
+        closeEditorBtn.addEventListener('click', () => {
+            editorModal.style.display = 'none';
+        });
+
+        cancelEditorBtn.addEventListener('click', () => {
+            editorModal.style.display = 'none';
+        });
+
+        saveEditorBtn.addEventListener('click', savePrompt);
+
+        // Écouter les messages du parent pour envoyer un prompt
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'SEND_PROMPT') {
+                // Ce message vient de l'éditeur ou d'un autre panneau
+                // On ne fait rien ici car c'est déjà géré par sendPromptToChat()
+                // Mais on pourrait y ajouter une notification visuelle si besoin
+            }
+        });
+
+        // Initialisation
+        loadPrompts();
+    </script>
+</body>
+</html>

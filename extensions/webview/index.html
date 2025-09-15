@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); }
+        #header, #footer { padding: 8px 16px; background: hsl(215, 28%, 17%); display: flex; align-items: center; }
+        #header { justify-content: space-between; border-bottom: 1px solid hsl(217, 19%, 20%); }
+        #footer { justify-content: space-between; font-size: 0.8rem; }
+        #body { height: calc(100vh - 100px); overflow: hidden; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div>SGC-AgentOne<br><small>By AMICHI Amine</small></div>
+        <button id="split-btn">🪞</button>
+        <div id="nav-menu">
+            <button data-view="chat">💬 Chat</button>
+            <button data-view="files">📁 Files</button>
+            <button data-view="editor">📝 Editor</button>
+            <button data-view="browser">🌐 Browser</button>
+            <button data-view="server">⚡ Server</button>
+            <button data-view="settings">⚙️ Settings</button>
+        </div>
+    </div>
+
+    <div id="body">
+        <iframe src="chat.html" frameborder="0"></iframe>
+    </div>
+
+    <div id="footer">
+        <span>Serveur : Déconnecté • UTF-8 • Projet : — • Fichier : — • Type : —</span>
+        <span id="timestamp">2025-04-05 14:22:01</span>
+    </div>
+
+    <script src="layout.js"></script>
+</body>
+</html>

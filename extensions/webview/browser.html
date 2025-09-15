@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Navigateur - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #header { padding: 12px 16px; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); display: flex; align-items: center; gap: 12px; }
+        #address-bar { flex: 1; padding: 8px 12px; border: none; border-radius: 24px; background: hsl(222, 84%, 8%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; outline: none; font-size: 0.9rem; }
+        #nav-buttons button { background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; padding: 6px 10px; border-radius: 12px; transition: background 0.2s ease; }
+        #nav-buttons button:hover { background: hsl(215, 16%, 25%); }
+        #tabs { display: flex; overflow-x: auto; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); padding: 0 8px; }
+        .tab { display: flex; align-items: center; padding: 8px 16px; margin-right: 8px; background: hsl(215, 16%, 25%); border-radius: 8px 8px 0 0; font-size: 0.9rem; cursor: pointer; gap: 6px; }
+        .tab.active { background: hsl(215, 28%, 17%); border-bottom: 2px solid hsl(217, 19%, 20%); color: hsl(188, 95%, 42%); }
+        .tab .close-btn { background: none; border: none; color: hsl(217, 10%, 58%); cursor: pointer; padding: 0 4px; font-size: 0.8rem; }
+        .tab .close-btn:hover { color: hsl(310, 100%, 75%); }
+        #browser-container { flex: 1; position: relative; }
+        iframe { width: 100%; height: 100%; border: none; }
+        #status-bar { padding: 8px 16px; background: hsl(215, 28%, 17%); border-top: 1px solid hsl(217, 19%, 20%); font-size: 0.8rem; color: hsl(217, 10%, 58%); display: flex; justify-content: space-between; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 500; }
+        .badge-preview { background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); }
+        .badge-web { background: hsl(215, 16%, 25%); color: hsl(210, 40%, 95%); }
+        @media (max-width: 768px) {
+            #header { flex-direction: column; gap: 8px; }
+            #address-bar { width: 100%; }
+            #nav-buttons { display: flex; width: 100%; justify-content: space-around; }
+            #tabs { padding: 0 4px; }
+            .tab { padding: 6px 12px; }
+            #status-bar { font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div id="nav-buttons">
+            <button id="back-btn">◀️</button>
+            <button id="forward-btn">▶️</button>
+            <button id="refresh-btn">🔄</button>
+            <button id="home-btn">🏠</button>
+        </div>
+        <input type="text" id="address-bar" placeholder="Entrez une URL ou une recherche...">
+        <button id="search-btn">🔍</button>
+    </div>
+
+    <div id="tabs">
+        <div class="tab active" data-url="http://localhost:5000" data-title="Preview">
+            <span>📄 Preview</span>
+            <button class="close-btn">×</button>
+        </div>
+    </div>
+
+    <div id="browser-container">
+        <iframe src="http://localhost:5000" sandbox="allow-same-origin allow-scripts allow-forms allow-popups" frameborder="0"></iframe>
+    </div>
+
+    <div id="status-bar">
+        <span id="loading-status">Chargement...</span>
+        <div>
+            <span class="badge badge-preview">Preview</span>
+            <span id="current-url">http://localhost:5000</span>
+        </div>
+    </div>
+
+    <script>
+        const iframe = document.querySelector('#browser-container iframe');
+        const addressBar = document.getElementById('address-bar');
+        const backBtn = document.getElementById('back-btn');
+        const forwardBtn = document.getElementById('forward-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const homeBtn = document.getElementById('home-btn');
+        const searchBtn = document.getElementById('search-btn');
+        const tabsContainer = document.getElementById('tabs');
+        const loadingStatus = document.getElementById('loading-status');
+        const currentUrlEl = document.getElementById('current-url');
+        const statusBadge = document.querySelector('.badge');
+
+        let currentTab = 0;
+        let tabHistory = [{ url: 'http://localhost:5000', title: 'Preview' }];
+
+        // Fonction pour mettre à jour l'adresse et le titre
+        function updateAddressAndTitle(url, title) {
+            addressBar.value = url;
+            currentUrlEl.textContent = url;
+            if (title) {
+                tabHistory[currentTab].title = title;
+                const tab = tabsContainer.children[currentTab];
+                tab.querySelector('span').textContent = title.length > 12 ? title.substring(0, 12) + '...' : title;
+            }
+        }
+
+        // Fonction pour créer un nouvel onglet
+        function createTab(url, title = 'Nouvel onglet') {
+            const tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.dataset.url = url;
+            tab.innerHTML = `
+                <span>${title.length > 12 ? title.substring(0, 12) + '...' : title}</span>
+                <button class="close-btn">×</button>
+            `;
+            tab.addEventListener('click', () => {
+                switchToTab(tab);
+            });
+
+            tab.querySelector('.close-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeTab(tab);
+            });
+
+            tabsContainer.appendChild(tab);
+            tabHistory.push({ url, title });
+            currentTab = tabHistory.length - 1;
+            loadUrl(url);
+            setActiveTab(tab);
+        }
+
+        // Fonction pour activer un onglet
+        function setActiveTab(tabElement) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tabElement.classList.add('active');
+        }
+
+        // Fonction pour basculer vers un onglet
+        function switchToTab(tabElement) {
+            const index = Array.from(tabsContainer.children).indexOf(tabElement);
+            currentTab = index;
+            loadUrl(tabElement.dataset.url);
+            setActiveTab(tabElement);
+        }
+
+        // Fonction pour fermer un onglet
+        function closeTab(tabElement) {
+            const index = Array.from(tabsContainer.children).indexOf(tabElement);
+            if (tabHistory.length <= 1) return; // Empêche la fermeture du dernier onglet
+
+            tabHistory.splice(index, 1);
+            tabsContainer.removeChild(tabElement);
+
+            if (index === currentTab && currentTab > 0) {
+                currentTab--;
+                switchToTab(tabsContainer.children[currentTab]);
+            } else if (index === currentTab && currentTab === 0) {
+                switchToTab(tabsContainer.children[0]);
+            } else if (index < currentTab) {
+                currentTab--;
+            }
+        }
+
+        // Charger une URL dans l'iframe
+        function loadUrl(url) {
+            if (!url.startsWith('http')) {
+                url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+            }
+
+            iframe.src = url;
+            updateAddressAndTitle(url, 'Chargement...');
+            loadingStatus.textContent = 'Chargement...';
+
+            // Détecter le changement de page
+            iframe.onload = () => {
+                try {
+                    const title = iframe.contentDocument.title || 'Page sans titre';
+                    const newUrl = iframe.contentWindow.location.href;
+
+                    updateAddressAndTitle(newUrl, title);
+
+                    // Mettre à jour le badge
+                    if (newUrl.includes('localhost:5000')) {
+                        statusBadge.className = 'badge badge-preview';
+                        statusBadge.textContent = 'Preview';
+                    } else {
+                        statusBadge.className = 'badge badge-web';
+                        statusBadge.textContent = 'Web';
+                    }
+
+                    loadingStatus.textContent = 'Prêt';
+                } catch (e) {
+                    // Si cross-origin, on ne peut pas lire le contenu
+                    updateAddressAndTitle(url, 'Accès restreint');
+                    loadingStatus.textContent = 'Accès restreint par CORS';
+                }
+            };
+
+            iframe.onerror = () => {
+                updateAddressAndTitle(url, 'Erreur de chargement');
+                loadingStatus.textContent = 'Erreur de chargement';
+            };
+        }
+
+        // Gestion des événements
+        addressBar.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadUrl(addressBar.value.trim());
+            }
+        });
+
+        searchBtn.addEventListener('click', () => {
+            loadUrl(addressBar.value.trim());
+        });
+
+        backBtn.addEventListener('click', () => {
+            iframe.contentWindow.history.back();
+        });
+
+        forwardBtn.addEventListener('click', () => {
+            iframe.contentWindow.history.forward();
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            iframe.contentWindow.location.reload();
+        });
+
+        homeBtn.addEventListener('click', () => {
+            loadUrl('http://localhost:5000');
+        });
+
+        // Créer un nouvel onglet via bouton (+)
+        const addTabBtn = document.createElement('button');
+        addTabBtn.innerHTML = '+';
+        addTabBtn.style.background = 'none';
+        addTabBtn.style.border = 'none';
+        addTabBtn.style.color = 'hsl(210, 40%, 95%)';
+        addTabBtn.style.cursor = 'pointer';
+        addTabBtn.style.padding = '8px 12px';
+        addTabBtn.style.marginLeft = 'auto';
+        addTabBtn.style.fontSize = '1.2rem';
+        addTabBtn.style.borderRadius = '50%';
+        addTabBtn.style.width = '32px';
+        addTabBtn.style.height = '32px';
+        addTabBtn.style.display = 'flex';
+        addTabBtn.style.alignItems = 'center';
+        addTabBtn.style.justifyContent = 'center';
+        addTabBtn.addEventListener('click', () => {
+            createTab('about:blank', 'Nouvel onglet');
+        });
+        tabsContainer.appendChild(addTabBtn);
+
+        // Initialisation
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'OPEN_BROWSER') {
+                loadUrl(event.data.url || 'http://localhost:5000');
+            }
+        });
+
+        // Mise à jour dynamique du statut serveur
+        setInterval(() => {
+            fetch('/api/server/status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'running') {
+                        if (iframe.src === 'http://localhost:5000') {
+                            iframe.src = 'http://localhost:5000'; // Force rechargement si serveur redémarré
+                        }
+                    }
+                })
+                .catch(() => {});
+        }, 3000);
+    </script>
+</body>
+</html>

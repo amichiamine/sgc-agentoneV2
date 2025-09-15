@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Guide - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #header { padding: 12px 16px; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); display: flex; align-items: center; justify-content: space-between; }
+        #header h2 { margin: 0; font-weight: 500; }
+        #search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 24px;
+            background: hsl(222, 84%, 8%);
+            color: hsl(210, 40%, 95%);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            margin-left: 16px;
+        }
+        #guide-container { flex: 1; overflow-y: auto; padding: 16px; }
+        .section {
+            margin-bottom: 32px;
+            border-left: 4px solid hsl(188, 95%, 42%);
+            padding-left: 16px;
+        }
+        .section h3 {
+            margin: 16px 0 8px 0;
+            color: hsl(188, 95%, 42%);
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        .section h4 {
+            margin: 12px 0 8px 0;
+            color: hsl(210, 40%, 95%);
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .section p {
+            margin-bottom: 12px;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+        .section code {
+            background: hsl(222, 84%, 8%);
+            color: hsl(188, 95%, 76%);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .section pre {
+            background: hsl(222, 84%, 8%);
+            color: hsl(210, 40%, 95%);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            overflow-x: auto;
+            border: 1px solid hsl(217, 19%, 20%);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+        .section ul {
+            margin: 12px 0;
+            padding-left: 20px;
+        }
+        .section li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        .highlight {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .command {
+            display: inline-block;
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+            padding: 6px 12px;
+            border-radius: 8px;
+            margin: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .tip {
+            background: hsl(113, 54%, 20%);
+            color: hsl(113, 54%, 73%);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 4px solid hsl(113, 54%, 73%);
+        }
+        .warning {
+            background: hsl(310, 100%, 20%);
+            color: hsl(310, 100%, 75%);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 4px solid hsl(310, 100%, 75%);
+        }
+        .nav-menu {
+            position: fixed;
+            top: 80px;
+            right: 16px;
+            width: 200px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            background: hsl(215, 28%, 17%);
+            border: 1px solid hsl(217, 19%, 20%);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 
+                4px 4px 8px hsl(222, 84%, 2%),
+                -4px -4px 8px hsl(215, 28%, 22%);
+        }
+        .nav-menu h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.9rem;
+            color: hsl(188, 95%, 42%);
+            padding-bottom: 8px;
+            border-bottom: 1px solid hsl(217, 19%, 20%);
+        }
+        .nav-menu ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .nav-menu li {
+            margin: 6px 0;
+        }
+        .nav-menu a {
+            color: hsl(210, 40%, 95%);
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+        .nav-menu a:hover {
+            background: hsl(215, 16%, 25%);
+        }
+        .nav-menu a.active {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        @media (max-width: 768px) {
+            #header { flex-direction: column; gap: 8px; }
+            #search-input { width: 100%; margin-left: 0; }
+            .nav-menu {
+                position: static;
+                width: 100%;
+                max-height: none;
+                margin-top: 16px;
+            }
+            .section h3 { font-size: 1.1rem; }
+            .section h4 { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>❓ Guide d'Aide</h2>
+        <input type="text" id="search-input" placeholder="Rechercher dans le guide...">
+    </div>
+
+    <div id="guide-container">
+        <div class="section">
+            <h3>Introduction</h3>
+            <p>SGC-AgentOne est un assistant universel d'écriture, de gestion et de contrôle de projets locaux. Il transforme votre navigateur en un bureau de développement complet, accessible depuis n'importe quel appareil — smartphone, tablette, ordinateur ou serveur mutualisé — sans installation ni dépendance.</p>
+            <p>Conçu pour la simplicité radicale, il ne nécessite aucun framework, aucun langage externe, aucun Docker, aucun Node.js. Seuls : PHP, HTML, CSS, JS, JSON, Markdown, SQLite.</p>
+            <p>Vous parlez. Il agit. Vous créez. Il gère. Vous explorez. Il comprend.</p>
+        </div>
+
+        <div class="section">
+            <h3>Comment démarrer</h3>
+            <ol>
+                <li>Téléchargez le dossier <code>sgc-agentone.zip</code>.</li>
+                <li>Décompressez-le sur votre machine (Windows, macOS, Linux, Replit, etc.).</li>
+                <li>Exécutez le script adapté à votre système :</li>
+            </ol>
+            <pre>
+# Sur Windows
+start-server.bat
+
+# Sur macOS / Linux
+chmod +x start-server.sh
+./start-server.sh
+
+# Sur Replit
+php -S 0.0.0.0:5000 extensions/webview/index.html
+            </pre>
+            <p>Une fois lancé, ouvrez votre navigateur sur <code>http://localhost:5000</code>.</p>
+            <p>Le conteneur principal s'affiche avec le chat activé par défaut.</p>
+            <div class="tip">
+                <strong>Conseil :</strong> Si vous utilisez Replit, assurez-vous que le port est bien configuré sur <code>5000</code>.
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Commandes disponibles</h3>
+            <p>Dans le champ de saisie du chat, tapez une commande au format suivant :</p>
+            <p><code>Action Cible : Contenu</code></p>
+            <p>Exemples concrets :</p>
+            <div class="command">createFile projet/main.py : def hello():\n    print("Bonjour")</div>
+            <div class="command">createDir projet/src/utils</div>
+            <div class="command">readFile projet/main.py</div>
+            <div class="command">deleteFile projet/main.py</div>
+            <div class="command">listDir projet</div>
+            <div class="command">startServer</div>
+            <div class="command">stopServer</div>
+            <div class="command">openProject</div>
+            <div class="command">serverLogs</div>
+            <div class="command">openBrowser http://localhost:5000</div>
+            <div class="command">exportProject projet</div>
+            <div class="command">toggleDebug</div>
+            <div class="command">setPort 8000</div>
+            <div class="command">uploadFile ./monfichier.txt</div>
+            <div class="command">downloadFile projet/config.json</div>
+            <p>Toutes ces commandes sont exécutées immédiatement et visuellement dans l'interface.</p>
+            <div class="warning">
+                <strong>Avertissement :</strong> Les actions critiques comme <code>deleteFile</code>, <code>deleteDir</code>, <code>moveFile</code> demandent une confirmation explicite si le mode <em>Blind-Exec</em> est désactivé (par défaut).
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Les Modes d'Usage</h3>
+            <h4>Mode Portrait (Smartphone)</h4>
+            <p>En mode portrait, une seule vue est affichée à la fois. Utilisez le menu du header pour basculer entre les vues :</p>
+            <ul>
+                <li><strong>💬 Chat</strong> : Interagissez par texte.</li>
+                <li><strong>📁 Files</strong> : Explorez votre projet.</li>
+                <li><strong>📝 Editor</strong> : Éditez vos fichiers.</li>
+                <li><strong>🌐 Browser</strong> : Prévisualisez votre site.</li>
+                <li><strong>⚡ Server</strong> : Contrôlez le serveur PHP.</li>
+                <li><strong>⚙️ Settings</strong> : Personnalisez l'apparence.</li>
+                <li><strong>📄 Guide</strong> : Aide intégrée.</li>
+            </ul>
+            <p>Le bouton "Fractionner" est masqué. Tous les éléments sont accessibles via le menu.</p>
+
+            <h4>Mode Paysage / Desktop</h4>
+            <p>Sur écran large, cliquez sur le bouton <strong>🪞 Fractionner</strong> en haut à droite pour activer la vue secondaire.</p>
+            <p>Les vues suivantes peuvent être affichées simultanément :</p>
+            <ul>
+                <li>Explorateur de fichiers (gauche)</li>
+                <li>Éditeur de code (centre)</li>
+                <li>Chat Agent (droite)</li>
+            </ul>
+            <p>Chaque volet peut être redimensionné à l'aide des manettes de glissement.</p>
+            <p>Le footer affiche toujours l'état du serveur, le projet ouvert, et la date/heure.</p>
+        </div>
+
+        <div class="section">
+            <h3>PWA Android — Application Native Sans SDK</h3>
+            <p>SGC-AgentOne peut être converti en application Android native sans recompiler, sans Java, sans Kotlin.</p>
+            <ol>
+                <li>Ouvrez <a href="https://www.pwabuilder.com" target="_blank">pwabuilder.com</a> dans votre navigateur.</li>
+                <li>Entrez l'URL de votre serveur : <code>http://localhost:5000</code> (ou l'adresse publique si hébergé).</li>
+                <li>Cliquez sur "Start".</li>
+                <li>Téléchargez le fichier APK généré.</li>
+                <li>Installez-le sur votre téléphone Android.</li>
+            </ol>
+            <p>Caractéristiques :</p>
+            <ul>
+                <li>Taille < 5 Mo</li>
+                <li>Fonctionne hors ligne</li>
+                <li>Mises à jour poussées par le serveur</li>
+                <li>Compatible Play Store</li>
+                <li>Identique à l'expérience web — même code source</li>
+            </ul>
+            <div class="tip">
+                <strong>Conseil :</strong> Pour un déploiement professionnel, signez l'APK avec un certificat valide avant de le soumettre à Google Play.
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>FAQ</h3>
+            <h4>Q : Pourquoi le serveur ne démarre-t-il pas ?</h4>
+            <p>R : Vérifiez que le port 5000 n'est pas déjà utilisé. Essayez un autre port dans <strong>Paramètres → Port du serveur</strong>.</p>
+
+            <h4>Q : Comment changer le thème sombre / clair ?</h4>
+            <p>R : Dans <strong>Paramètres → Apparence</strong>, activez/désactivez le mode sombre. Les couleurs sont automatiquement mises à jour.</p>
+
+            <h4>Q : Que faire si je supprime accidentellement un fichier ?</h4>
+            <p>R : SGC-AgentOne ne dispose pas de corbeille. Toutefois, chaque action est journalisée dans <code>core/logs/actions.log</code>. Vous pouvez restaurer manuellement à partir d'une sauvegarde externe ou recréer le fichier via le chat.</p>
+
+            <h4>Q : Est-ce que SGC-AgentOne peut lire mes fichiers sensibles ?</h4>
+            <p>R : Non. Toute action est limitée à la racine de votre projet. Le système bloque systématiquement les tentatives de path traversal (ex: <code>../../../etc/passwd</code>). Le moteur ne peut accéder qu'aux fichiers dans le dossier que vous avez explicitement ouvert.</p>
+
+            <h4>Q : Qu'est-ce que le mode Blind-Exec ?</h4>
+            <p>R : Ce mode permet d'exécuter certaines actions sans confirmation. Il est <strong>désactivé par défaut</strong>. Pour l'activer, créez un fichier <code>core/tools/blind-exec/enabled.txt</code> contenant uniquement <code>true</code>. Seules les actions listées dans <code>core/config/whitelist.json</code> seront autorisées. Utilisez avec prudence.</p>
+
+            <h4>Q : Comment ajouter une nouvelle fonctionnalité ?</h4>
+            <p>R : Ajoutez un nouveau fichier PHP dans <code>core/agents/actions/</code>. Par exemple, <code>createDatabase.php</code>. Le système le détectera automatiquement. Vous pourrez ensuite l'utiliser dans le chat avec la commande correspondante.</p>
+        </div>
+
+        <div class="section">
+            <h3>Glossaire</h3>
+            <dl>
+                <dt>PathHelper.php</dt>
+                <dd>Le seul point d'accès aux chemins du système. Garantit l'universalité et la sécurité.</dd>
+
+                <dt>ClayMorphism</dt>
+                <dd>Style de design organique avec ombres profondes et reflets doux, appliqué à toutes les interfaces.</dd>
+
+                <dt>API</dt>
+                <dd>Points d'accès JSON purs (<code>/api/chat.php</code>, <code>/api/files.php</code>) qui relient l'interface au moteur PHP.</dd>
+
+                <dt>Interpreter</dt>
+                <dd>Le cerveau du chat. Traduit une phrase naturelle en commande structurée exécutable.</dd>
+
+                <dt>Prompt</dt>
+                <dd>Fichier <code>.md</code> stocké dans <code>prompts/</code> contenant une série d'actions réutilisables.</dd>
+
+                <dt>Project.json</dt>
+                <dd>Fichier métadonnées dans chaque projet contenant nom, description, langages, état et notes.</dd>
+
+                <dt>Whitelist.json</dt>
+                <dd>Liste des actions autorisées en mode Blind-Exec.</dd>
+
+                <dt>Actions.log</dt>
+                <dd>Journal complet de toutes les actions effectuées (création, suppression, exécution…).</dd>
+
+                <dt>Chat.log</dt>
+                <dd>Historique des conversations avec l'agent.</dd>
+
+                <dt>Index.html</dt>
+                <dd>Conteneur universel unique qui charge toutes les vues dans un iframe.</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="nav-menu">
+        <h4>Navigateur rapide</h4>
+        <ul>
+            <li><a href="#introduction">Introduction</a></li>
+            <li><a href="#how-to-start">Comment démarrer</a></li>
+            <li><a href="#commands">Commandes disponibles</a></li>
+            <li><a href="#usage-modes">Modes d'usage</a></li>
+            <li><a href="#pwa-android">PWA Android</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#glossary">Glossaire</a></li>
+        </ul>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('search-input');
+        const guideContainer = document.getElementById('guide-container');
+        const navMenuLinks = document.querySelectorAll('.nav-menu a');
+
+        // Recherche en temps réel
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.toLowerCase();
+            const sections = guideContainer.querySelectorAll('.section');
+            
+            sections.forEach(section => {
+                const text = section.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        });
+
+        // Navigation par ancre
+        navMenuLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                navMenuLinks.forEach(l => l.classList.remove('active'));
+                e.target.classList.add('active');
+            });
+        });
+
+        // Activer l'ancre visible
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('.section');
+            let currentSection = '';
+
+            sections.forEach(section => {
+                const rect = section.getBoundingClientRect();
+                if (rect.top <= 100 && rect.bottom >= 100) {
+                    currentSection = section.id;
+                }
+            });
+
+            navMenuLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + currentSection) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Initialisation
+        document.querySelector('.nav-menu a[href="#introduction"]').classList.add('active');
+    </script>
+</body>
+</html>

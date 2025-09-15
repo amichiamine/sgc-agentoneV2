@@ -1,0 +1,24 @@
+[
+  {
+    "phrase": "crée un fichier main.py avec une fonction hello",
+    "action": "createFile",
+    "target": "main.py",
+    "content": "def hello():\n    print(\"Bonjour\")"
+  },
+  {
+    "phrase": "lance le serveur",
+    "action": "startServer"
+  },
+  {
+    "phrase": "arrête le serveur",
+    "action": "stopServer"
+  },
+  {
+    "phrase": "ouvre le projet",
+    "action": "openProject"
+  },
+  {
+    "phrase": "montre les logs",
+    "action": "serverLogs"
+  }
+]

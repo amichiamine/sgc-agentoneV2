@@ -1,0 +1,39 @@
+# Sécurité : bloquer l'accès direct aux dossiers sensibles
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Bloquer l'accès au dossier core/
+    RewriteRule ^core/ - [F,L]
+
+    # Bloquer l'accès au dossier api/ sauf pour les requêtes internes (gérées par PHP)
+    # Les API doivent être appelées via POST/GET depuis l'interface, pas directement en navigateur
+    # Mais on autorise l'accès pour les tests ; en production, ce fichier est optionnel (Apache seulement)
+    
+    # Bloquer l'accès aux logs
+    RewriteRule ^core/logs/ - [F,L]
+
+    # Bloquer l'accès aux outils de blind-exec
+    RewriteRule ^core/tools/blind-exec/ - [F,L]
+
+    # Bloquer l'accès aux prompts
+    RewriteRule ^prompts/ - [F,L]
+
+    # Bloquer l'accès aux fichiers de configuration sensibles
+    RewriteRule ^core/config/settings.json$ - [F,L]
+    RewriteRule ^core/config/rules.json$ - [F,L]
+    RewriteRule ^core/config/whitelist.json$ - [F,L]
+
+    # Autoriser l'accès aux vues web (dans extensions/webview/)
+    # Elles sont accessibles car servies par index.php via iframe
+</IfModule>
+
+# Empêcher l'affichage des fichiers de liste
+Options -Indexes
+
+# Forcer UTF-8
+AddDefaultCharset UTF-8
+
+# Compression GZIP pour les fichiers statiques
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+</IfModule>

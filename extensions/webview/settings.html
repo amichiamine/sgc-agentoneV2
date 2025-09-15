@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Paramètres - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #header { padding: 12px 16px; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); display: flex; align-items: center; justify-content: space-between; }
+        #header h2 { margin: 0; font-weight: 500; }
+        #settings-container { flex: 1; overflow-y: auto; padding: 16px; gap: 24px; display: flex; flex-direction: column; }
+        .section { background: hsl(215, 28%, 17%); border: 1px solid hsl(217, 19%, 20%); border-radius: 12px; padding: 16px; }
+        .section h3 { margin: 0 0 12px 0; color: hsl(188, 95%, 42%); font-size: 1.1rem; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: hsl(210, 40%, 95%); }
+        .form-control {
+            width: 100%;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 8px;
+            background: hsl(222, 84%, 8%);
+            color: hsl(210, 40%, 95%);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .form-control:focus { box-shadow: 0 0 0 2px hsl(188, 95%, 42%); }
+        .color-picker {
+            width: 48px;
+            height: 48px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            box-shadow: none;
+            transition: transform 0.2s ease;
+        }
+        .color-picker:hover { transform: scale(1.05); }
+        .color-picker-label {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .file-upload {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .file-upload input[type="file"] {
+            display: none;
+        }
+        .file-upload button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s ease;
+        }
+        .file-upload button:hover { background: hsl(215, 16%, 30%); }
+        .file-upload span {
+            font-size: 0.9rem;
+            color: hsl(217, 10%, 58%);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .btn-group button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-group button.save {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        .btn-group button.save:hover { background: hsl(188, 95%, 48%); }
+        .btn-group button.reset {
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+        }
+        .btn-group button.reset:hover { background: hsl(215, 16%, 30%); }
+        .btn-group button.clear {
+            background: hsl(310, 100%, 20%);
+            color: hsl(310, 100%, 75%);
+        }
+        .btn-group button.clear:hover { background: hsl(310, 100%, 25%); }
+        .switch {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            margin-left: 8px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            width: 40px;
+            height: 20px;
+            background-color: hsl(215, 16%, 25%);
+            border-radius: 20px;
+            transition: .3s;
+            margin-left: 8px;
+        }
+        .slider:before {
+            content: "";
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: hsl(210, 40%, 95%);
+            transition: .3s;
+            top: 1px;
+            left: 1px;
+        }
+        .switch input:checked + .slider {
+            background-color: hsl(188, 95%, 42%);
+        }
+        .switch input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+        .preview-area {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 16px 0;
+            padding: 12px;
+            background: hsl(222, 84%, 8%);
+            border-radius: 8px;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .preview-logo {
+            width: 32px;
+            height: 32px;
+            background: hsl(215, 28%, 17%);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            color: hsl(188, 95%, 42%);
+            font-weight: bold;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .preview-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: hsl(210, 40%, 95%);
+        }
+        .preview-author {
+            font-size: 0.85rem;
+            color: hsl(217, 10%, 58%);
+        }
+        .alert {
+            padding: 12px;
+            background: hsl(310, 100%, 20%);
+            color: hsl(310, 100%, 75%);
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            border-left: 4px solid hsl(310, 100%, 75%);
+        }
+        @media (max-width: 768px) {
+            .section { padding: 12px; }
+            .btn-group { flex-direction: column; }
+            .form-control, .color-picker { width: 100%; }
+            .color-picker { margin: 8px 0; }
+            .preview-area { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .preview-logo { margin-bottom: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>⚙️ Paramètres Généraux</h2>
+    </div>
+
+    <div id="settings-container">
+        <div class="section">
+            <h3>🎨 Apparence</h3>
+            <div class="form-group">
+                <label for="theme-mode">Mode Sombre</label>
+                <label class="switch">
+                    <input type="checkbox" id="theme-mode" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="app-title">Titre de l'application</label>
+                <input type="text" id="app-title" class="form-control" placeholder="Ex: SGC-AgentOne">
+            </div>
+            <div class="form-group">
+                <label for="app-author">Auteur</label>
+                <input type="text" id="app-author" class="form-control" placeholder="Ex: By AMICHI Amine">
+            </div>
+            <div class="form-group">
+                <label>Logo</label>
+                <div class="file-upload">
+                    <button id="upload-logo-btn">⬆️ Choisir un logo</button>
+                    <span id="logo-filename">Aucun fichier sélectionné</span>
+                    <input type="file" id="logo-input" accept="image/png,image/jpeg">
+                </div>
+            </div>
+            <div class="preview-area">
+                <div class="preview-logo" id="preview-logo">S</div>
+                <div>
+                    <div class="preview-title" id="preview-title">SGC-AgentOne</div>
+                    <div class="preview-author" id="preview-author">By AMICHI Amine</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🎨 Couleurs du Thème</h3>
+            <div class="form-group">
+                <label for="bg-color">Fond principal</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="color-picker-label" id="bg-color-preview" style="background-color: hsl(222, 84%, 5%)"></div>
+                    <input type="color" class="color-picker" id="bg-color" value="#0e1a2c">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="fg-color">Texte principal</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="color-picker-label" id="fg-color-preview" style="background-color: hsl(210, 40%, 95%)"></div>
+                    <input type="color" class="color-picker" id="fg-color" value="#f0f4f8">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="primary-color">Couleur primaire</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="color-picker-label" id="primary-color-preview" style="background-color: hsl(188, 95%, 42%)"></div>
+                    <input type="color" class="color-picker" id="primary-color" value="#1ab8b8">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="accent-color">Accent</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="color-picker-label" id="accent-color-preview" style="background-color: hsl(188, 95%, 42%)"></div>
+                    <input type="color" class="color-picker" id="accent-color" value="#1ab8b8">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="card-color">Cartes / Panels</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="color-picker-label" id="card-color-preview" style="background-color: hsl(215, 28%, 17%)"></div>
+                    <input type="color" class="color-picker" id="card-color" value="#2d3a45">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>⚡ Serveur & Sécurité</h3>
+            <div class="form-group">
+                <label for="server-port">Port du serveur</label>
+                <input type="number" id="server-port" class="form-control" min="1" max="65535" value="5000">
+            </div>
+            <div class="form-group">
+                <label for="server-host">Hôte</label>
+                <input type="text" id="server-host" class="form-control" value="0.0.0.0">
+            </div>
+            <div class="form-group">
+                <label for="debug-mode">Mode Debug (logs détaillés)</label>
+                <label class="switch">
+                    <input type="checkbox" id="debug-mode">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="blind-exec">Mode Blind-Exec (exécution automatique)</label>
+                <label class="switch">
+                    <input type="checkbox" id="blind-exec">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <p class="alert">⚠️ Mode Blind-Exec : Activez uniquement si vous comprenez les risques. Toutes les commandes sont exécutées sans confirmation.</p>
+        </div>
+
+        <div class="section">
+            <h3>🗑️ Nettoyage</h3>
+            <div class="form-group">
+                <label>Effacer les logs</label>
+                <button id="clear-logs-btn" class="btn-group button clear">🗑️ Effacer chat.log et actions.log</button>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button id="save-settings-btn" class="save">💾 Enregistrer</button>
+            <button id="reset-defaults-btn" class="reset">🔄 Réinitialiser aux valeurs par défaut</button>
+        </div>
+    </div>
+
+    <script>
+        const settingsContainer = document.getElementById('settings-container');
+        const appTitleInput = document.getElementById('app-title');
+        const appAuthorInput = document.getElementById('app-author');
+        const themeModeSwitch = document.getElementById('theme-mode');
+        const serverPortInput = document.getElementById('server-port');
+        const serverHostInput = document.getElementById('server-host');
+        const debugModeSwitch = document.getElementById('debug-mode');
+        const blindExecSwitch = document.getElementById('blind-exec');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const resetDefaultsBtn = document.getElementById('reset-defaults-btn');
+        const clearLogsBtn = document.getElementById('clear-logs-btn');
+
+        // Prévisualisation
+        const previewLogo = document.getElementById('preview-logo');
+        const previewTitle = document.getElementById('preview-title');
+        const previewAuthor = document.getElementById('preview-author');
+
+        // Color pickers
+        const colorInputs = ['bg-color', 'fg-color', 'primary-color', 'accent-color', 'card-color'];
+        const colorPreviews = {
+            'bg-color': document.getElementById('bg-color-preview'),
+            'fg-color': document.getElementById('fg-color-preview'),
+            'primary-color': document.getElementById('primary-color-preview'),
+            'accent-color': document.getElementById('accent-color-preview'),
+            'card-color': document.getElementById('card-color-preview')
+        };
+
+        // Logo upload
+        const logoInput = document.getElementById('logo-input');
+        const logoUploadBtn = document.getElementById('upload-logo-btn');
+        const logoFilename = document.getElementById('logo-filename');
+
+        // Charger les paramètres depuis settings.json
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'readFile', path: 'core/config/settings.json' })
+                });
+
+                if (!response.ok) throw new Error('Fichier non trouvé');
+
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error);
+
+                const settings = JSON.parse(data.content);
+
+                // Appliquer les valeurs
+                appTitleInput.value = settings.title || 'SGC-AgentOne';
+                appAuthorInput.value = settings.author || 'By AMICHI Amine';
+                themeModeSwitch.checked = settings.dark_mode !== false; // Par défaut true
+                serverPortInput.value = settings.port || 5000;
+                serverHostInput.value = settings.host || '0.0.0.0';
+                debugModeSwitch.checked = settings.debug || false;
+                blindExecSwitch.checked = settings.blind_exec_enabled || false;
+
+                // Appliquer les couleurs
+                const colors = [
+                    { key: 'bg-color', value: settings.background || 'hsl(222, 84%, 5%)' },
+                    { key: 'fg-color', value: settings.foreground || 'hsl(210, 40%, 95%)' },
+                    { key: 'primary-color', value: settings.primary || 'hsl(188, 95%, 42%)' },
+                    { key: 'accent-color', value: settings.accent || 'hsl(188, 95%, 42%)' },
+                    { key: 'card-color', value: settings.card || 'hsl(215, 28%, 17%)' }
+                ];
+
+                colors.forEach(c => {
+                    const hex = hslToHex(c.value);
+                    document.getElementById(c.key).value = hex;
+                    colorPreviews[c.key].style.backgroundColor = c.value;
+                });
+
+                // Logo
+                if (settings.logo_path && settings.logo_path !== '') {
+                    logoFilename.textContent = settings.logo_path.split('/').pop();
+                    previewLogo.style.backgroundImage = `url(${settings.logo_path})`;
+                    previewLogo.style.backgroundSize = 'cover';
+                    previewLogo.style.backgroundPosition = 'center';
+                } else {
+                    previewLogo.style.backgroundImage = 'none';
+                    previewLogo.textContent = 'S';
+                }
+
+                updatePreview();
+
+            } catch (error) {
+                console.error('Erreur chargement settings:', error);
+                alert('Impossible de charger les paramètres : ' + error.message);
+            }
+        }
+
+        // Convertir HSL en Hex
+        function hslToHex(hsl) {
+            const match = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+            if (!match) return '#000000';
+
+            let [_, h, s, l] = match.map(Number);
+            h /= 360;
+            s /= 100;
+            l /= 100;
+
+            let r, g, b;
+
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+
+            const toHex = x => {
+                const hex = Math.round(x * 255).toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            };
+
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+
+        // Mettre à jour la prévisualisation
+        function updatePreview() {
+            previewTitle.textContent = appTitleInput.value || 'SGC-AgentOne';
+            previewAuthor.textContent = appAuthorInput.value || 'By AMICHI Amine';
+        }
+
+        // Événements pour les couleurs
+        colorInputs.forEach(key => {
+            const input = document.getElementById(key);
+            input.addEventListener('input', () => {
+                const hslValue = getComputedStyle(document.documentElement).getPropertyValue('--' + key.replace('-', '_'));
+                const rgb = hexToRgb(input.value);
+                const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+                const hslStr = `hsl(${hsl.h}, ${hsl.s}%, ${hsl.l}%)`;
+
+                document.documentElement.style.setProperty(`--${key.replace('-', '_')}`, hslStr);
+                colorPreviews[key].style.backgroundColor = hslStr;
+
+                // Mettre à jour la prévisualisation
+                updatePreview();
+            });
+        });
+
+        // Convertir RGB en HSL
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b); const min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+
+            if (max === min) {
+                h = s = 0;
+            } else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch(max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+
+            return {
+                h: Math.round(h * 360),
+                s: Math.round(s * 100),
+                l: Math.round(l * 100)
+            };
+        }
+
+        // Convertir Hex en RGB
+        function hexToRgb(hex) {
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result
+                ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+                : { r: 0, g: 0, b: 0 };
+        }
+
+        // Gestion du logo
+        logoUploadBtn.addEventListener('click', () => logoInput.click());
+        logoInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', 'assets/logo.png');
+
+            const response = await fetch('/api/files?action=uploadFile', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                logoFilename.textContent = 'logo.png';
+                previewLogo.style.backgroundImage = `url(assets/logo.png)`;
+                previewLogo.style.backgroundSize = 'cover';
+                previewLogo.style.backgroundPosition = 'center';
+                previewLogo.textContent = '';
+            } else {
+                alert('Erreur : ' + result.error);
+            }
+        });
+
+        // Sauvegarder les paramètres
+        async function saveSettings() {
+            const settings = {
+                title: appTitleInput.value.trim() || 'SGC-AgentOne',
+                author: appAuthorInput.value.trim() || 'By AMICHI Amine',
+                dark_mode: themeModeSwitch.checked,
+                port: parseInt(serverPortInput.value) || 5000,
+                host: serverHostInput.value.trim() || '0.0.0.0',
+                debug: debugModeSwitch.checked,
+                blind_exec_enabled: blindExecSwitch.checked,
+                background: getComputedStyle(document.documentElement).getPropertyValue('--background').trim(),
+                foreground: getComputedStyle(document.documentElement).getPropertyValue('--foreground').trim(),
+                primary: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+                accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+                card: getComputedStyle(document.documentElement).getPropertyValue('--card').trim(),
+                logo_path: logoFilename.textContent === 'Aucun fichier sélectionné' ? '' : 'assets/logo.png'
+            };
+
+            try {
+                const response = await fetch('/api/files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'createFile',
+                        path: 'core/config/settings.json',
+                        content: JSON.stringify(settings, null, 2)
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Paramètres sauvegardés avec succès !');
+                    window.parent.postMessage({ type: 'RELOAD_SETTINGS' }, '*');
+                } else {
+                    alert('Erreur : ' + result.error);
+                }
+            } catch (error) {
+                alert('Erreur réseau : ' + error.message);
+            }
+        }
+
+        // Réinitialiser aux valeurs par défaut
+        async function resetDefaults() {
+            const defaultSettings = {
+                title: 'SGC-AgentOne',
+                author: 'By AMICHI Amine',
+                dark_mode: true,
+                port: 5000,
+                host: '0.0.0.0',
+                debug: false,
+                blind_exec_enabled: false,
+                background: 'hsl(222, 84%, 5%)',
+                foreground: 'hsl(210, 40%, 95%)',
+                primary: 'hsl(188, 95%, 42%)',
+                accent: 'hsl(188, 95%, 42%)',
+                card: 'hsl(215, 28%, 17%)',
+                logo_path: ''
+            };
+
+            // Réinitialiser les champs
+            appTitleInput.value = defaultSettings.title;
+            appAuthorInput.value = defaultSettings.author;
+            themeModeSwitch.checked = defaultSettings.dark_mode;
+            serverPortInput.value = defaultSettings.port;
+            serverHostInput.value = defaultSettings.host;
+            debugModeSwitch.checked = defaultSettings.debug;
+            blindExecSwitch.checked = defaultSettings.blind_exec_enabled;
+
+            // Réinitialiser les couleurs
+            colorInputs.forEach(key => {
+                const hsl = defaultSettings[key.replace('-color', '')];
+                const hex = hslToHex(hsl);
+                document.getElementById(key).value = hex;
+                colorPreviews[key].style.backgroundColor = hsl;
+                document.documentElement.style.setProperty(`--${key.replace('-', '_')}`, hsl);
+            });
+
+            // Réinitialiser logo
+            logoFilename.textContent = 'Aucun fichier sélectionné';
+            previewLogo.style.backgroundImage = 'none';
+            previewLogo.textContent = 'S';
+
+            updatePreview();
+        }
+
+        // Effacer les logs
+        async function clearLogs() {
+            if (!confirm('Êtes-vous sûr de vouloir effacer chat.log et actions.log ? Cette action est irréversible.')) return;
+
+            try {
+                const response = await fetch('/api/server', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'clearLogs' })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Logs effacés avec succès.');
+                } else {
+                    alert('Erreur : ' + result.error);
+                }
+            } catch (error) {
+                alert('Erreur réseau : ' + error.message);
+            }
+        }
+
+        // Événements
+        appTitleInput.addEventListener('input', updatePreview);
+        appAuthorInput.addEventListener('input', updatePreview);
+        themeModeSwitch.addEventListener('change', updatePreview);
+
+        saveSettingsBtn.addEventListener('click', saveSettings);
+        resetDefaultsBtn.addEventListener('click', resetDefaults);
+        clearLogsBtn.addEventListener('click', clearLogs);
+
+        // Initialisation
+        loadSettings();
+    </script>
+</body>
+</html>

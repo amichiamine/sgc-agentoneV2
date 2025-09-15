@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestionnaire de Projets - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #header { padding: 12px 16px; background: hsl(215, 28%, 17%); border-bottom: 1px solid hsl(217, 19%, 20%); display: flex; align-items: center; justify-content: space-between; }
+        #header h2 { margin: 0; font-weight: 500; }
+        #new-project-btn { padding: 8px 16px; border: none; border-radius: 8px; background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); cursor: pointer; font-weight: bold; transition: all 0.2s ease; }
+        #new-project-btn:hover { background: hsl(188, 95%, 48%); }
+        #projects-list { flex: 1; overflow-y: auto; padding: 16px; gap: 12px; display: flex; flex-direction: column; }
+        .project-card {
+            background: hsl(215, 28%, 17%);
+            border: 1px solid hsl(217, 19%, 20%);
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 
+                4px 4px 8px hsl(222, 84%, 2%),
+                -4px -4px 8px hsl(215, 28%, 22%);
+        }
+        .project-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                6px 6px 12px hsl(222, 84%, 2%),
+                -6px -6px 12px hsl(215, 28%, 24%);
+        }
+        .project-card.active {
+            border-color: hsl(188, 95%, 42%);
+            box-shadow: 
+                0 0 0 2px hsl(188, 95%, 42%);
+        }
+        .project-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .project-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: hsl(188, 95%, 42%);
+            margin: 0;
+            word-wrap: break-word;
+            max-width: 70%;
+        }
+        .project-path {
+            font-size: 0.85rem;
+            color: hsl(217, 10%, 58%);
+            font-style: italic;
+            margin: 4px 0 8px 0;
+            word-wrap: break-word;
+            max-width: 90%;
+        }
+        .project-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .project-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-php { background: hsl(262, 90%, 20%); color: hsl(262, 90%, 75%); }
+        .badge-html { background: hsl(17, 100%, 20%); color: hsl(17, 100%, 74%); }
+        .badge-css { background: hsl(215, 100%, 20%); color: hsl(215, 100%, 74%); }
+        .badge-js { background: hsl(50, 100%, 20%); color: hsl(50, 100%, 74%); }
+        .badge-json { background: hsl(113, 54%, 20%); color: hsl(113, 54%, 73%); }
+        .badge-md { background: hsl(217, 10%, 20%); color: hsl(217, 10%, 58%); }
+        .project-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .status-active { background: hsl(113, 54%, 20%); color: hsl(113, 54%, 73%); }
+        .status-paused { background: hsl(215, 16%, 25%); color: hsl(210, 40%, 95%); }
+        .status-completed { background: hsl(120, 50%, 20%); color: hsl(120, 50%, 73%); }
+        .project-notes {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: hsl(210, 40%, 95%);
+            margin: 8px 0;
+            padding: 12px;
+            background: hsl(222, 84%, 8%);
+            border-radius: 8px;
+            white-space: pre-line;
+            border: 1px solid hsl(217, 19%, 20%);
+        }
+        .project-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .project-actions button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: hsl(215, 16%, 25%);
+            color: hsl(210, 40%, 95%);
+            transition: all 0.2s ease;
+        }
+        .project-actions button:hover {
+            background: hsl(215, 16%, 30%);
+        }
+        .project-actions button.export {
+            background: hsl(188, 95%, 42%);
+            color: hsl(222, 84%, 5%);
+        }
+        .project-actions button.export:hover {
+            background: hsl(188, 95%, 48%);
+        }
+        .project-actions button.delete {
+            background: hsl(310, 100%, 20%);
+            color: hsl(310, 100%, 75%);
+        }
+        .project-actions button.delete:hover {
+            background: hsl(310, 100%, 25%);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: hsl(217, 10%, 58%);
+            font-style: italic;
+        }
+        .empty-state p {
+            margin: 16px 0;
+        }
+        @media (max-width: 768px) {
+            #header { flex-direction: column; align-items: flex-start; gap: 8px; }
+            #new-project-btn { width: 100%; }
+            .project-card { padding: 12px; }
+            .project-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+            .project-title { max-width: 100%; }
+            .project-path { max-width: 100%; }
+            .project-meta { flex-direction: column; }
+            .project-notes { font-size: 0.85rem; }
+            .project-actions { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>📁 Gestionnaire de Projets</h2>
+        <button id="new-project-btn">➕ Nouveau Projet</button>
+    </div>
+
+    <div id="projects-list">
+        <!-- Projets dynamiques -->
+    </div>
+
+    <script>
+        const projectsList = document.getElementById('projects-list');
+        const newProjectBtn = document.getElementById('new-project-btn');
+
+        let activeProjectPath = '';
+
+        // Charger les projets depuis localStorage ou créer un fichier project.json par défaut
+        async function loadProjects() {
+            projectsList.innerHTML = '<div class="empty-state"><p>Aucun projet n’est encore ouvert.</p><p>Cliquez sur "Nouveau Projet" pour sélectionner un dossier racine.</p></div>';
+
+            // Récupérer la liste des projets depuis localStorage
+            const savedProjects = JSON.parse(localStorage.getItem('sgc-projects') || '[]');
+            
+            if (savedProjects.length === 0) return;
+
+            // Trier par date de dernière modification (du plus récent au plus ancien)
+            savedProjects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+
+            // Pour chaque projet, vérifier s’il existe physiquement
+            for (const project of savedProjects) {
+                try {
+                    const response = await fetch('/api/files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'readFile', path: project.path + '/project.json' })
+                    });
+
+                    if (!response.ok) continue; // Fichier manquant → ignoré
+
+                    const content = await response.text();
+                    const meta = JSON.parse(content);
+
+                    // Si le chemin est invalide ou ne correspond pas, on ignore
+                    if (!meta.name || !meta.path) continue;
+
+                    renderProjectCard(meta);
+                } catch (e) {
+                    console.warn('Projet corrompu ou inaccessible:', project.path);
+                }
+            }
+        }
+
+        // Afficher une carte de projet
+        function renderProjectCard(project) {
+            const card = document.createElement('div');
+            card.className = 'project-card';
+            if (project.path === activeProjectPath) card.classList.add('active');
+
+            const header = document.createElement('div');
+            header.className = 'project-header';
+
+            const title = document.createElement('h3');
+            title.className = 'project-title';
+            title.textContent = project.name;
+
+            const path = document.createElement('div');
+            path.className = 'project-path';
+            path.textContent = project.path;
+
+            header.appendChild(title);
+            header.appendChild(path);
+
+            const meta = document.createElement('div');
+            meta.className = 'project-meta';
+
+            // Ajouter les badges de langages
+            if (project.languages && Array.isArray(project.languages)) {
+                project.languages.forEach(lang => {
+                    const badge = document.createElement('span');
+                    badge.className = `project-badge badge-${lang.toLowerCase()}`;
+                    badge.textContent = lang.toUpperCase();
+                    meta.appendChild(badge);
+                });
+            }
+
+            // Ajouter le statut
+            const status = document.createElement('span');
+            status.className = `project-status status-${project.status.toLowerCase()}`;
+            status.textContent = project.status;
+            meta.appendChild(status);
+
+            const notes = document.createElement('div');
+            notes.className = 'project-notes';
+            notes.textContent = project.notes || 'Aucune note ajoutée.';
+
+            const actions = document.createElement('div');
+            actions.className = 'project-actions';
+
+            const openBtn = document.createElement('button');
+            openBtn.textContent = 'Ouvrir';
+            openBtn.addEventListener('click', () => {
+                openProject(project.path);
+            });
+
+            const exportBtn = document.createElement('button');
+            exportBtn.className = 'export';
+            exportBtn.textContent = 'Exporter';
+            exportBtn.addEventListener('click', () => {
+                exportProject(project.path);
+            });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete';
+            deleteBtn.textContent = 'Supprimer';
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Êtes-vous sûr de vouloir supprimer ce projet ?\n\nLe dossier physique ne sera pas effacé, mais ses métadonnées seront supprimées.')) {
+                    removeProject(project.path);
+                }
+            });
+
+            actions.appendChild(openBtn);
+            actions.appendChild(exportBtn);
+            actions.appendChild(deleteBtn);
+
+            card.appendChild(header);
+            card.appendChild(meta);
+            card.appendChild(notes);
+            card.appendChild(actions);
+
+            card.addEventListener('click', () => {
+                if (card.classList.contains('active')) {
+                    card.classList.remove('active');
+                    activeProjectPath = '';
+                } else {
+                    document.querySelectorAll('.project-card').forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    activeProjectPath = project.path;
+                }
+            });
+
+            projectsList.appendChild(card);
+        }
+
+        // Ouvrir un projet (définit la racine)
+        async function openProject(path) {
+            // Mettre à jour le projet actif dans localStorage
+            localStorage.setItem('sgc-project-root', path);
+            
+            // Recharger la vue principale
+            window.parent.postMessage({ type: 'OPEN_PROJECT', path }, '*');
+            
+            // Mettre à jour l'affichage
+            activeProjectPath = path;
+            loadProjects(); // Rafraîchit pour mettre à jour l'état actif
+        }
+
+        // Exporter un projet en ZIP
+        async function exportProject(path) {
+            const response = await fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'exportProject', path: path })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const url = URL.createObjectURL(new Blob([data.zip], { type: 'application/zip' }));
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = data.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } else {
+                alert('Erreur : ' + data.error);
+            }
+        }
+
+        // Supprimer un projet (des métadonnées uniquement)
+        function removeProject(path) {
+            let projects = JSON.parse(localStorage.getItem('sgc-projects') || '[]');
+            projects = projects.filter(p => p.path !== path);
+            localStorage.setItem('sgc-projects', JSON.stringify(projects));
+            loadProjects();
+        }
+
+        // Créer un nouveau projet via filepicker
+        newProjectBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.webkitdirectory = true;
+            input.directory = true;
+            input.multiple = false;
+            input.onchange = async (e) => {
+                const selectedPath = e.target.files[0].path || e.target.files[0].webkitRelativePath.split('/')[0];
+                if (!selectedPath) return;
+
+                // Vérifier si un fichier project.json existe déjà
+                let hasProjectJson = false;
+                try {
+                    const response = await fetch('/api/files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'readFile', path: selectedPath + '/project.json' })
+                    });
+                    if (response.ok) hasProjectJson = true;
+                } catch {}
+
+                if (!hasProjectJson) {
+                    // Créer un project.json par défaut
+                    const defaultMeta = {
+                        name: selectedPath.split('/').pop(),
+                        path: selectedPath,
+                        description: '',
+                        languages: ['PHP'],
+                        status: 'En cours',
+                        notes: '',
+                        lastModified: new Date().toISOString()
+                    };
+
+                    fetch('/api/files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'createFile',
+                            path: selectedPath + '/project.json',
+                            content: JSON.stringify(defaultMeta, null, 2)
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            addProjectToStore(defaultMeta);
+                            openProject(selectedPath);
+                        } else {
+                            alert('Erreur création de project.json : ' + data.error);
+                        }
+                    });
+                } else {
+                    // Charger les métadonnées existantes
+                    fetch('/api/files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'readFile', path: selectedPath + '/project.json' })
+                    })
+                    .then(r => r.text())
+                    .then(content => {
+                        const meta = JSON.parse(content);
+                        addProjectToStore(meta);
+                        openProject(selectedPath);
+                    });
+                }
+            };
+            input.click();
+        });
+
+        // Ajouter un projet à la liste locale
+        function addProjectToStore(meta) {
+            let projects = JSON.parse(localStorage.getItem('sgc-projects') || '[]');
+            projects = projects.filter(p => p.path !== meta.path);
+            projects.push(meta);
+            localStorage.setItem('sgc-projects', JSON.stringify(projects));
+            loadProjects();
+        }
+
+        // Écouter les messages de l'interface principale
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'OPEN_PROJECT') {
+                activeProjectPath = event.data.path;
+                loadProjects();
+            }
+        });
+
+        // Initialisation
+        loadProjects();
+    </script>
+</body>
+</html>

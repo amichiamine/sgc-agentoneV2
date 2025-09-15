@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat - SGC-AgentOne</title>
+    <link rel="stylesheet" href="theme/colors.css">
+    <link rel="stylesheet" href="theme/fonts.css">
+    <link rel="stylesheet" href="theme/syntax.css">
+    <style>
+        body { margin: 0; padding: 0; background: hsl(222, 84%, 5%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #messages { flex: 1; overflow-y: auto; padding: 16px; gap: 12px; display: flex; flex-direction: column; }
+        .message { max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; line-height: 1.5; word-wrap: break-word; }
+        .user { align-self: flex-end; background: hsl(215, 16%, 25%); color: hsl(210, 40%, 95%); }
+        .ai { align-self: flex-start; background: hsl(215, 28%, 17%); color: hsl(210, 40%, 95%); border: 1px solid hsl(217, 19%, 20%); }
+        .ai .clay-panel { margin: 0; border: none; box-shadow: none; background: none; }
+        #input-container { display: flex; padding: 12px; background: hsl(215, 28%, 17%); border-top: 1px solid hsl(217, 19%, 20%); }
+        #input { flex: 1; padding: 10px 16px; border: none; border-radius: 24px; background: hsl(222, 84%, 8%); color: hsl(210, 40%, 95%); font-family: 'Inter', sans-serif; outline: none; }
+        #send { margin-left: 12px; padding: 10px 16px; border: none; border-radius: 24px; background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); cursor: pointer; font-weight: bold; transition: all 0.2s ease; }
+        #send:hover { background: hsl(188, 95%, 48%); }
+        #send:disabled { background: hsl(215, 16%, 30%); cursor: not-allowed; }
+        .pending { opacity: 0.7; }
+        #queue-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: hsl(222, 84%, 5%);
+            z-index: 100;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        #queue-panel.active { transform: translateX(0); }
+        #queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        #queue-header h3 { margin: 0; color: hsl(188, 95%, 42%); }
+        #close-queue { background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; font-size: 1.5rem; }
+        #queue-list { flex: 1; list-style: none; padding: 0; margin: 0; }
+        .queue-item { padding: 12px; margin-bottom: 8px; background: hsl(215, 28%, 17%); border: 1px solid hsl(217, 19%, 20%); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .queue-item .status { font-size: 0.8rem; padding: 4px 8px; border-radius: 12px; }
+        .status-pending { background: hsl(215, 16%, 25%); color: hsl(217, 10%, 58%); }
+        .status-running { background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); }
+        .status-success { background: hsl(113, 54%, 73%); color: hsl(222, 84%, 5%); }
+        .status-error { background: hsl(310, 100%, 75%); color: hsl(222, 84%, 5%); }
+        .queue-actions button { margin-left: 8px; border: none; background: none; color: hsl(210, 40%, 95%); cursor: pointer; font-size: 0.9rem; }
+        .queue-actions button:hover { color: hsl(188, 95%, 42%); }
+        #queue-controls { display: flex; gap: 12px; padding: 12px; border-top: 1px solid hsl(217, 19%, 20%); }
+        #queue-controls button { flex: 1; padding: 10px; border: none; border-radius: 8px; background: hsl(215, 16%, 25%); color: hsl(210, 40%, 95%); cursor: pointer; }
+        #queue-controls button:hover { background: hsl(215, 16%, 30%); }
+        #queue-controls button#run-all { background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); }
+        #queue-controls button#run-all:hover { background: hsl(188, 95%, 48%); }
+        @media (max-width: 768px) {
+            .message { max-width: 95%; }
+            #input-container { padding: 8px; }
+            #input { padding: 8px 12px; }
+            #send { padding: 8px 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="messages">
+        <!-- Messages dynamiques -->
+    </div>
+
+    <div id="input-container">
+        <input type="text" id="input" placeholder="Demande à l’agent..." autocomplete="off">
+        <button id="send">▶️</button>
+    </div>
+
+    <div id="queue-panel">
+        <div id="queue-header">
+            <h3>Liste d’attente</h3>
+            <button id="close-queue">&times;</button>
+        </div>
+        <ul id="queue-list"></ul>
+        <div id="queue-controls">
+            <button id="run-all">Exécuter tout</button>
+            <button id="clear-queue">Vider la file</button>
+            <button id="export-queue">Exporter</button>
+        </div>
+    </div>
+
+    <script>
+        const messagesContainer = document.getElementById('messages');
+        const inputField = document.getElementById('input');
+        const sendButton = document.getElementById('send');
+        const queuePanel = document.getElementById('queue-panel');
+        const queueList = document.getElementById('queue-list');
+        const closeQueueBtn = document.getElementById('close-queue');
+        const runAllBtn = document.getElementById('run-all');
+        const clearQueueBtn = document.getElementById('clear-queue');
+        const exportQueueBtn = document.getElementById('export-queue');
+
+        let token = localStorage.getItem('auth_token') || '';
+        let queue = [];
+        let isProcessing = false;
+
+        // Charger le token au démarrage
+        fetch('/api/auth')
+            .then(r => r.json())
+            .then(data => {
+                if (data.token) {
+                    token = data.token;
+                    localStorage.setItem('auth_token', token);
+                }
+            })
+            .catch(() => {});
+
+        // Afficher un message dans le chat
+        function appendMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            if (sender === 'ai') {
+                // Si c'est une réponse avec contenu HTML ou code, appliquer la coloration syntaxique
+                const hasCodeBlock = text.includes('```');
+                if (hasCodeBlock) {
+                    messageDiv.innerHTML = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                        const languageClass = lang ? `syntax-${lang.toLowerCase()}` : '';
+                        return `<pre class="${languageClass}"><code>${code}</code></pre>`;
+                    });
+                } else {
+                    messageDiv.textContent = text;
+                }
+            } else {
+                messageDiv.textContent = text;
+            }
+
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Envoyer un message
+        async function sendMessage() {
+            const text = inputField.value.trim();
+            if (!text) return;
+
+            appendMessage(text, 'user');
+            inputField.value = '';
+
+            sendButton.disabled = true;
+            sendButton.textContent = '⏹️';
+
+            const messageObj = { message: text };
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(messageObj)
+                });
+                const result = await response.json();
+
+                if (result.error) {
+                    appendMessage(result.error, 'ai');
+                } else if (result.success && result.result) {
+                    appendMessage(result.result, 'ai');
+                } else {
+                    appendMessage("Réponse inattendue.", 'ai');
+                }
+            } catch (error) {
+                appendMessage("Erreur de connexion au serveur.", 'ai');
+            } finally {
+                sendButton.disabled = false;
+                sendButton.textContent = '▶️';
+            }
+        }
+
+        // Gestion des événements
+        sendButton.addEventListener('click', sendMessage);
+        inputField.addEventListener('keypress', e => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Ouvrir/Fermer la liste d'attente
+        document.addEventListener('keydown', e => {
+            if (e.ctrlKey && e.altKey && e.key === 'q') {
+                e.preventDefault();
+                queuePanel.classList.toggle('active');
+            }
+        });
+
+        closeQueueBtn.addEventListener('click', () => {
+            queuePanel.classList.remove('active');
+        });
+
+        document.getElementById('queue-btn').addEventListener('click', () => {
+            queuePanel.classList.toggle('active');
+        });
+
+        // Gérer la liste d'attente
+        function addToQueue(command) {
+            const id = Date.now().toString();
+            queue.push({ id, command, status: 'pending' });
+            renderQueue();
+        }
+
+        function renderQueue() {
+            queueList.innerHTML = '';
+            queue.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'queue-item';
+                li.innerHTML = `
+                    <span>${item.command}</span>
+                    <div class="queue-actions">
+                        <span class="status ${item.status}">${item.status}</span>
+                        <button class="delete" data-id="${item.id}">🗑️</button>
+                    </div>
+                `;
+                queueList.appendChild(li);
+            });
+
+            // Supprimer un élément
+            queueList.querySelectorAll('.delete').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    queue = queue.filter(item => item.id !== btn.dataset.id);
+                    renderQueue();
+                });
+            });
+        }
+
+        // Exécuter tout
+        runAllBtn.addEventListener('click', async () => {
+            if (queue.length === 0 || isProcessing) return;
+
+            isProcessing = true;
+            runAllBtn.disabled = true;
+            runAllBtn.textContent = 'En cours...';
+
+            for (let i = 0; i < queue.length; i++) {
+                const item = queue[i];
+                item.status = 'running';
+                renderQueue();
+
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: item.command })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    item.status = 'success';
+                } else {
+                    item.status = 'error';
+                }
+                renderQueue();
+            }
+
+            isProcessing = false;
+            runAllBtn.disabled = false;
+            runAllBtn.textContent = 'Exécuter tout';
+        });
+
+        // Vider la file
+        clearQueueBtn.addEventListener('click', () => {
+            queue = [];
+            renderQueue();
+        });
+
+        // Exporter la file
+        exportQueueBtn.addEventListener('click', () => {
+            const content = queue.map(q => q.command).join('\n\n---\n\n');
+            const blob = new Blob([content], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sgc-agentone-queue.md';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Initialiser
+        renderQueue();
+    </script>
+</body>
+</html>

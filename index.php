@@ -1,91 +1,4 @@
-<?php
-/**
- * SGC-AgentOne v2.1 - Solution Simple et Optimale
- * Élimination complète des problèmes de chemins
- * Auto-installation et configuration zéro
- */
-
-// Configuration d'erreurs pour diagnostic
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-// Chemins absolus basés sur __DIR__ - TOUJOURS corrects
-$projectRoot = __DIR__;
-$webviewPath = $projectRoot . '/extensions/webview';
-$indexFile = $webviewPath . '/index.html';
-$corePath = $projectRoot . '/core';
-$apiPath = $projectRoot . '/api';
-
-// Mode debug
-$debug = isset($_GET['debug']) && $_GET['debug'] === '1';
-
-/**
- * Création automatique de la structure si manquante
- */
-function createProjectStructure($root) {
-    $dirs = [
-        '/core/config',
-        '/core/logs', 
-        '/core/db',
-        '/core/utils',
-        '/core/agents/actions',
-        '/api',
-        '/extensions/webview',
-        '/prompts'
-    ];
-    
-    foreach ($dirs as $dir) {
-        $path = $root . $dir;
-        if (!is_dir($path)) {
-            mkdir($path, 0755, true);
-        }
-    }
-    
-    // Créer les fichiers essentiels
-    createEssentialFiles($root);
-}
-
-/**
- * Création des fichiers essentiels
- */
-function createEssentialFiles($root) {
-    // 1. Interface principale
-    $indexHtml = $root . '/extensions/webview/index.html';
-    if (!file_exists($indexHtml)) {
-        file_put_contents($indexHtml, getIndexHtmlContent());
-    }
-    
-    // 2. Configuration par défaut
-    $settingsFile = $root . '/core/config/settings.json';
-    if (!file_exists($settingsFile)) {
-        $settings = [
-            'port' => 5000,
-            'host' => '0.0.0.0',
-            'debug' => false,
-            'theme' => 'sgc-commander'
-        ];
-        file_put_contents($settingsFile, json_encode($settings, JSON_PRETTY_PRINT));
-    }
-    
-    // 3. API de base
-    createBasicAPI($root);
-}
-
-/**
- * Contenu de l'interface principale
- */
-function getIndexHtmlContent() {
-    return '<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>SGC-AgentOne</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #0a0f1c; color: #e2e8f0; height: 100vh; overflow: hidden;
-        }
+m        }
         #header { 
             background: #1e293b; padding: 12px 20px; border-bottom: 1px solid #334155;
             display: flex; justify-content: space-between; align-items: center;
@@ -117,7 +30,7 @@ function getIndexHtmlContent() {
         }
         #send-btn:hover { background: #0ea5e9; }
         #status { 
-            position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b;
+.            position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b;
             padding: 8px 20px; font-size: 0.8rem; color: #94a3b8; border-top: 1px solid #334155;
         }
         .success { color: #22c55e; }

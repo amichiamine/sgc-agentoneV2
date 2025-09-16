@@ -130,7 +130,96 @@ try {
     if (isset($_GET['action'])) {
         switch ($_GET['action']) {
             case 'chat':
-                include $projectRoot . '/api/chat.php';
+                header("Content-Type: application/json");
+                $input = json_decode(file_get_contents("php://input"), true);
+                
+                if (!$input || !isset($input["message"])) {
+                    echo json_encode(["error" => "Message manquant"]);
+                    exit;
+                }
+                
+                $message = trim($input["message"]);
+                
+                // Parser simple : action cible : contenu
+                if (strpos($message, ":") !== false) {
+                    list($actionTarget, $content) = explode(":", $message, 2);
+                    $actionTarget = trim($actionTarget);
+                    $content = trim($content);
+                    
+                    $parts = explode(" ", trim($actionTarget), 2);
+                    $action = $parts[0];
+                    $target = isset($parts[1]) ? trim($parts[1]) : "";
+                    
+                    switch ($action) {
+                        case "createFile":
+                            if ($target && $content) {
+                                $filePath = $projectRoot . '/' . $target;
+                                $dir = dirname($filePath);
+                                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                                file_put_contents($filePath, $content);
+                                echo json_encode(["success" => true, "result" => "✅ Fichier créé: $target"]);
+                            } else {
+                                echo json_encode(["error" => "Cible ou contenu manquant"]);
+                            }
+                            break;
+                            
+                        case "readFile":
+                            $filePath = $projectRoot . '/' . $target;
+                            if ($target && file_exists($filePath)) {
+                                $fileContent = file_get_contents($filePath);
+                                echo json_encode(["success" => true, "result" => "📄 Contenu de $target:\n\n" . $fileContent]);
+                            } else {
+                                echo json_encode(["error" => "Fichier introuvable: $target"]);
+                            }
+                            break;
+                            
+                        case "listDir":
+                            $dir = $target ?: ".";
+                            $dirPath = $projectRoot . '/' . $dir;
+                            if (is_dir($dirPath)) {
+                                $files = array_diff(scandir($dirPath), [".", ".."]);
+                                $list = [];
+                                foreach ($files as $f) {
+                                    $icon = is_dir("$dirPath/$f") ? "📁" : "📄";
+                                    $list[] = "$icon $f";
+                                }
+                                $result = "📂 Contenu de $dir:\n\n" . implode("\n", $list);
+                                echo json_encode(["success" => true, "result" => $result]);
+                            } else {
+                                echo json_encode(["error" => "Dossier introuvable: $dir"]);
+                            }
+                            break;
+                            
+                        case "createDir":
+                            if ($target) {
+                                $dirPath = $projectRoot . '/' . $target;
+                                if (!is_dir($dirPath)) {
+                                    mkdir($dirPath, 0755, true);
+                                    echo json_encode(["success" => true, "result" => "📁 Dossier créé: $target"]);
+                                } else {
+                                    echo json_encode(["error" => "Le dossier existe déjà: $target"]);
+                                }
+                            } else {
+                                echo json_encode(["error" => "Nom du dossier manquant"]);
+                            }
+                            break;
+                            
+                        case "deleteFile":
+                            $filePath = $projectRoot . '/' . $target;
+                            if ($target && file_exists($filePath)) {
+                                unlink($filePath);
+                                echo json_encode(["success" => true, "result" => "🗑️ Fichier supprimé: $target"]);
+                            } else {
+                                echo json_encode(["error" => "Fichier introuvable: $target"]);
+                            }
+                            break;
+                            
+                        default:
+                            echo json_encode(["error" => "Action inconnue: $action. Actions disponibles: createFile, readFile, listDir, createDir, deleteFile"]);
+                    }
+                } else {
+                    echo json_encode(["error" => "Format invalide. Utilisez: action cible : contenu\n\nExemples:\n• createFile test.txt : Hello World\n• listDir .\n• readFile index.php"]);
+                }
                 exit;
                 
             case 'listFiles':
@@ -146,6 +235,44 @@ try {
                     }
                 }
                 echo json_encode(['success' => true, 'files' => $files]);
+                exit;
+                
+            case 'saveSettings':
+                header("Content-Type: application/json");
+                $input = json_decode(file_get_contents("php://input"), true);
+                
+                if ($input) {
+                    $settingsPath = $projectRoot . '/core/config/settings.json';
+                    $settings = [
+                        'title' => $input['title'] ?? 'SGC-AgentOne',
+                        'theme' => $input['theme'] ?? 'dark',
+                        'port' => $input['port'] ?? 5000,
+                        'debug' => $input['debug'] ?? false
+                    ];
+                    
+                    file_put_contents($settingsPath, json_encode($settings, JSON_PRETTY_PRINT));
+                    echo json_encode(['success' => true, 'message' => 'Paramètres sauvegardés']);
+                } else {
+                    echo json_encode(['error' => 'Données invalides']);
+                }
+                exit;
+                
+            case 'loadSettings':
+                header("Content-Type: application/json");
+                $settingsPath = $projectRoot . '/core/config/settings.json';
+                
+                if (file_exists($settingsPath)) {
+                    $settings = json_decode(file_get_contents($settingsPath), true);
+                    echo json_encode(['success' => true, 'settings' => $settings]);
+                } else {
+                    $defaultSettings = [
+                        'title' => 'SGC-AgentOne',
+                        'theme' => 'dark',
+                        'port' => 5000,
+                        'debug' => false
+                    ];
+                    echo json_encode(['success' => true, 'settings' => $defaultSettings]);
+                }
                 exit;
         }
     }
@@ -230,7 +357,10 @@ try {
         <div id="nav">
             <button class="nav-btn active" data-view="chat">💬 Chat</button>
             <button class="nav-btn" data-view="files">📁 Fichiers</button>
+            <button class="nav-btn" data-view="editor">📝 Éditeur</button>
+            <button class="nav-btn" data-view="terminal">⚡ Terminal</button>
             <button class="nav-btn" data-view="settings">⚙️ Paramètres</button>
+            <button class="nav-btn" data-view="help">❓ Aide</button>
         </div>
     </div>
     
@@ -240,11 +370,13 @@ try {
                 <div id="messages">
                     <div class="message ai">
                         <strong>SGC-AgentOne:</strong> Bonjour ! Je suis votre assistant de développement. 
-                        Tapez vos commandes au format: <code>action cible : contenu</code>
+                        Tapez vos commandes au format: <strong>action cible : contenu</strong>
                         <br><br>Exemples:
-                        <br>• <code>createFile test.php : <?php echo "Hello"; ?></code>
-                        <br>• <code>listDir .</code>
-                        <br>• <code>readFile config.json</code>
+                        <br>• <strong>createFile test.php : &lt;?php echo "Hello"; ?&gt;</strong>
+                        <br>• <strong>listDir .</strong>
+                        <br>• <strong>readFile index.php</strong>
+                        <br>• <strong>createDir mon-dossier</strong>
+                        <br>• <strong>deleteFile test.txt</strong>
                     </div>
                 </div>
                 <div id="input-area">
@@ -262,6 +394,34 @@ try {
             </div>
             <div id="file-list" class="file-list">
                 <p>Cliquez sur "Actualiser" pour voir les fichiers...</p>
+            </div>
+        </div>
+        
+        <div id="editor" class="view">
+            <h2>📝 Éditeur de Code</h2>
+            <div class="settings-group">
+                <label for="editor-file">Fichier à éditer</label>
+                <input type="text" id="editor-file" placeholder="Nom du fichier (ex: index.php)">
+                <button class="btn" onclick="loadFileInEditor()">📂 Charger</button>
+                <button class="btn" onclick="saveFileFromEditor()">💾 Sauvegarder</button>
+            </div>
+            <div class="settings-group">
+                <textarea id="code-editor" style="width: 100%; height: 400px; font-family: 'Courier New', monospace; background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 10px;" placeholder="Contenu du fichier..."></textarea>
+            </div>
+        </div>
+        
+        <div id="terminal" class="view">
+            <h2>⚡ Terminal de Commandes</h2>
+            <div class="settings-group">
+                <p>Commandes rapides :</p>
+                <button class="btn" onclick="runQuickCommand('listDir .')">📂 Lister fichiers</button>
+                <button class="btn" onclick="runQuickCommand('readFile index.php')">📄 Lire index.php</button>
+                <button class="btn btn-secondary" onclick="clearTerminal()">🗑️ Effacer</button>
+            </div>
+            <div id="terminal-output" style="background: #1e293b; padding: 15px; border-radius: 6px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap;"></div>
+            <div class="settings-group" style="margin-top: 10px;">
+                <input type="text" id="terminal-input" placeholder="Tapez votre commande..." style="width: 80%; margin-right: 10px;">
+                <button class="btn" onclick="runTerminalCommand()">▶️ Exécuter</button>
             </div>
         </div>
         
@@ -283,8 +443,56 @@ try {
                 <input type="number" id="server-port" value="5000" min="1000" max="65535">
             </div>
             <div class="settings-group">
+                <label for="debug-mode">Mode Debug</label>
+                <select id="debug-mode">
+                    <option value="false">Désactivé</option>
+                    <option value="true">Activé</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="auto-save">Sauvegarde automatique</label>
+                <select id="auto-save">
+                    <option value="true">Activée</option>
+                    <option value="false">Désactivée</option>
+                </select>
+            </div>
+            <div class="settings-group">
                 <button class="btn" onclick="saveSettings()">💾 Enregistrer</button>
                 <button class="btn btn-secondary" onclick="resetSettings()">🔄 Réinitialiser</button>
+                <button class="btn btn-secondary" onclick="loadSettings()">📂 Charger</button>
+            </div>
+            <div id="settings-status" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
+        </div>
+        
+        <div id="help" class="view">
+            <h2>❓ Guide d'Aide</h2>
+            <div style="background: #1e293b; padding: 20px; border-radius: 8px;">
+                <h3>🚀 Commandes Disponibles</h3>
+                <ul>
+                    <li><strong>createFile nom.ext : contenu</strong> - Créer un fichier</li>
+                    <li><strong>readFile nom.ext</strong> - Lire un fichier</li>
+                    <li><strong>listDir dossier</strong> - Lister le contenu d'un dossier</li>
+                    <li><strong>createDir nom-dossier</strong> - Créer un dossier</li>
+                    <li><strong>deleteFile nom.ext</strong> - Supprimer un fichier</li>
+                </ul>
+                
+                <h3>💡 Exemples Pratiques</h3>
+                <ul>
+                    <li><code>createFile hello.php : &lt;?php echo "Hello World!"; ?&gt;</code></li>
+                    <li><code>createFile style.css : body { background: #000; }</code></li>
+                    <li><code>listDir .</code> (lister la racine)</li>
+                    <li><code>readFile index.php</code></li>
+                    <li><code>createDir assets/images</code></li>
+                </ul>
+                
+                <h3>🔧 Fonctionnalités</h3>
+                <ul>
+                    <li><strong>Chat</strong> : Interface de commandes naturelles</li>
+                    <li><strong>Fichiers</strong> : Explorateur de fichiers</li>
+                    <li><strong>Éditeur</strong> : Édition de code intégrée</li>
+                    <li><strong>Terminal</strong> : Commandes rapides</li>
+                    <li><strong>Paramètres</strong> : Configuration personnalisée</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -362,43 +570,203 @@ try {
         }
         
         // Fonctions pour les paramètres
-        function saveSettings() {
+        async function saveSettings() {
             const title = document.getElementById("app-title").value;
             const theme = document.getElementById("theme-mode").value;
             const port = document.getElementById("server-port").value;
+            const debug = document.getElementById("debug-mode").value;
+            const autoSave = document.getElementById("auto-save").value;
             
-            // Sauvegarder dans localStorage
-            localStorage.setItem("sgc-settings", JSON.stringify({
+            const settings = {
                 title: title,
                 theme: theme,
-                port: port
-            }));
+                port: parseInt(port),
+                debug: debug === 'true',
+                autoSave: autoSave === 'true'
+            };
             
-            alert("Paramètres sauvegardés !");
-            
-            // Appliquer le titre
-            document.querySelector("#header h1").textContent = title;
+            try {
+                const response = await fetch("?action=saveSettings", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                
+                const result = await response.json();
+                const statusDiv = document.getElementById("settings-status");
+                
+                if (result.success) {
+                    statusDiv.className = "success";
+                    statusDiv.textContent = "✅ " + result.message;
+                    statusDiv.style.display = "block";
+                    
+                    // Appliquer le titre
+                    document.querySelector("#header h1").textContent = title;
+                    
+                    // Sauvegarder aussi dans localStorage
+                    localStorage.setItem("sgc-settings", JSON.stringify(settings));
+                } else {
+                    statusDiv.className = "error";
+                    statusDiv.textContent = "❌ Erreur: " + result.error;
+                    statusDiv.style.display = "block";
+                }
+                
+                setTimeout(() => {
+                    statusDiv.style.display = "none";
+                }, 3000);
+                
+            } catch (error) {
+                alert("Erreur de connexion: " + error.message);
+            }
+        }
+        
+        async function loadSettings() {
+            try {
+                const response = await fetch("?action=loadSettings");
+                const result = await response.json();
+                
+                if (result.success) {
+                    const settings = result.settings;
+                    document.getElementById("app-title").value = settings.title || "SGC-AgentOne";
+                    document.getElementById("theme-mode").value = settings.theme || "dark";
+                    document.getElementById("server-port").value = settings.port || 5000;
+                    document.getElementById("debug-mode").value = settings.debug ? 'true' : 'false';
+                    document.getElementById("auto-save").value = settings.autoSave !== false ? 'true' : 'false';
+                    
+                    document.querySelector("#header h1").textContent = settings.title || "SGC-AgentOne";
+                    
+                    const statusDiv = document.getElementById("settings-status");
+                    statusDiv.className = "success";
+                    statusDiv.textContent = "✅ Paramètres chargés";
+                    statusDiv.style.display = "block";
+                    
+                    setTimeout(() => {
+                        statusDiv.style.display = "none";
+                    }, 2000);
+                }
+            } catch (error) {
+                alert("Erreur de chargement: " + error.message);
+            }
         }
         
         function resetSettings() {
             if (confirm("Réinitialiser tous les paramètres ?")) {
-                localStorage.removeItem("sgc-settings");
                 document.getElementById("app-title").value = "SGC-AgentOne";
                 document.getElementById("theme-mode").value = "dark";
                 document.getElementById("server-port").value = "5000";
-                alert("Paramètres réinitialisés !");
+                document.getElementById("debug-mode").value = "false";
+                document.getElementById("auto-save").value = "true";
+                
+                localStorage.removeItem("sgc-settings");
+                document.querySelector("#header h1").textContent = "SGC-AgentOne";
+                
+                const statusDiv = document.getElementById("settings-status");
+                statusDiv.className = "success";
+                statusDiv.textContent = "✅ Paramètres réinitialisés";
+                statusDiv.style.display = "block";
+                
+                setTimeout(() => {
+                    statusDiv.style.display = "none";
+                }, 2000);
             }
         }
         
-        // Charger les paramètres sauvegardés
-        const savedSettings = localStorage.getItem("sgc-settings");
-        if (savedSettings) {
-            const settings = JSON.parse(savedSettings);
-            document.getElementById("app-title").value = settings.title || "SGC-AgentOne";
-            document.getElementById("theme-mode").value = settings.theme || "dark";
-            document.getElementById("server-port").value = settings.port || "5000";
-            document.querySelector("#header h1").textContent = settings.title || "SGC-AgentOne";
+        // Fonctions pour l'éditeur
+        async function loadFileInEditor() {
+            const filename = document.getElementById("editor-file").value.trim();
+            if (!filename) {
+                alert("Veuillez entrer un nom de fichier");
+                return;
+            }
+            
+            try {
+                const response = await fetch("?action=chat", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: `readFile ${filename}` })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const content = result.result.replace(/^📄 Contenu de [^:]+:\n\n/, '');
+                    document.getElementById("code-editor").value = content;
+                } else {
+                    alert("Erreur: " + result.error);
+                }
+            } catch (error) {
+                alert("Erreur de connexion: " + error.message);
+            }
         }
+        
+        async function saveFileFromEditor() {
+            const filename = document.getElementById("editor-file").value.trim();
+            const content = document.getElementById("code-editor").value;
+            
+            if (!filename) {
+                alert("Veuillez entrer un nom de fichier");
+                return;
+            }
+            
+            try {
+                const response = await fetch("?action=chat", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: `createFile ${filename} : ${content}` })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert("✅ Fichier sauvegardé: " + filename);
+                } else {
+                    alert("Erreur: " + result.error);
+                }
+            } catch (error) {
+                alert("Erreur de connexion: " + error.message);
+            }
+        }
+        
+        // Fonctions pour le terminal
+        async function runQuickCommand(command) {
+            document.getElementById("terminal-input").value = command;
+            await runTerminalCommand();
+        }
+        
+        async function runTerminalCommand() {
+            const command = document.getElementById("terminal-input").value.trim();
+            if (!command) return;
+            
+            const output = document.getElementById("terminal-output");
+            output.textContent += `> ${command}\n`;
+            
+            try {
+                const response = await fetch("?action=chat", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: command })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    output.textContent += result.result + "\n\n";
+                } else {
+                    output.textContent += "❌ " + result.error + "\n\n";
+                }
+            } catch (error) {
+                output.textContent += "❌ Erreur de connexion: " + error.message + "\n\n";
+            }
+            
+            output.scrollTop = output.scrollHeight;
+            document.getElementById("terminal-input").value = "";
+        }
+        
+        function clearTerminal() {
+            document.getElementById("terminal-output").textContent = "";
+        }
+        
+        // Charger les paramètres sauvegardés
         
         // === CHAT FUNCTIONALITY ===
         const messagesContainer = document.getElementById('messages');
@@ -452,6 +820,14 @@ try {
         messageInput.addEventListener('keypress', e => {
             if (e.key === 'Enter') sendMessage();
         });
+        
+        // Événements terminal
+        document.getElementById('terminal-input').addEventListener('keypress', e => {
+            if (e.key === 'Enter') runTerminalCommand();
+        });
+        
+        // Charger les paramètres au démarrage
+        loadSettings();
         
         console.log('SGC-AgentOne initialisé avec succès');
     </script>

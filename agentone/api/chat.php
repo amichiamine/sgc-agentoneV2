@@ -1,6 +1,6 @@
 <?php
 /**
- * API Chat - Traitement des commandes de l'assistant
+ * API Chat - Traitement des commandes de l'assistant avec interpréteur intégré
  */
 
 header('Content-Type: application/json');
@@ -22,6 +22,12 @@ if (!$input || !isset($input['message'])) {
 }
 
 $message = trim($input['message']);
+
+// Créer les dossiers nécessaires s'ils n'existent pas
+$logsDir = __DIR__ . '/../core/logs';
+if (!is_dir($logsDir)) {
+    mkdir($logsDir, 0755, true);
+}
 
 // Parser la commande : "action cible : contenu"
 if (strpos($message, ':') !== false) {
@@ -61,6 +67,18 @@ try {
             $result = deleteFile($target);
             break;
             
+        case 'startserver':
+            $result = startServer();
+            break;
+            
+        case 'stopserver':
+            $result = stopServer();
+            break;
+            
+        case 'serverstatus':
+            $result = getServerStatus();
+            break;
+            
         case 'help':
             $result = showHelp();
             break;
@@ -77,6 +95,10 @@ try {
         'error' => 'Erreur lors de l\'exécution : ' . $e->getMessage()
     ];
 }
+
+// Logger l'action
+$logEntry = '[' . date('Y-m-d H:i:s') . "] USER: \"$message\" | RESULT: " . ($result['success'] ? 'success' : $result['error']) . "\n";
+file_put_contents($logsDir . '/chat.log', $logEntry, FILE_APPEND | LOCK_EX);
 
 echo json_encode($result);
 
@@ -250,6 +272,103 @@ function deleteFile($filename) {
     }
 }
 
+function startServer() {
+    $configPath = __DIR__ . '/../core/config/settings.json';
+    $config = ['port' => 5000, 'host' => '0.0.0.0'];
+    
+    if (file_exists($configPath)) {
+        $savedConfig = json_decode(file_get_contents($configPath), true);
+        if ($savedConfig && isset($savedConfig['server'])) {
+            $config = array_merge($config, $savedConfig['server']);
+        }
+    }
+    
+    $port = $config['port'];
+    $host = $config['host'];
+    
+    // Vérifier si le serveur est déjà en cours
+    $connection = @fsockopen($host === '0.0.0.0' ? 'localhost' : $host, $port, $errno, $errstr, 1);
+    if ($connection) {
+        fclose($connection);
+        return ['success' => false, 'error' => 'Le serveur est déjà en cours d\'exécution'];
+    }
+    
+    // Démarrer le serveur
+    $documentRoot = __DIR__ . '/..';
+    $indexFile = $documentRoot . '/index.php';
+    
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $command = "start /B php -S $host:$port -t " . escapeshellarg($documentRoot) . " " . escapeshellarg($indexFile) . " > nul 2>&1";
+    } else {
+        $command = "php -S $host:$port -t " . escapeshellarg($documentRoot) . " " . escapeshellarg($indexFile) . " > /dev/null 2>&1 &";
+    }
+    
+    exec($command);
+    sleep(2);
+    
+    // Vérifier si le serveur a démarré
+    $connection = @fsockopen($host === '0.0.0.0' ? 'localhost' : $host, $port, $errno, $errstr, 1);
+    if ($connection) {
+        fclose($connection);
+        return ['success' => true, 'message' => "Serveur démarré sur $host:$port"];
+    } else {
+        return ['success' => false, 'error' => 'Impossible de démarrer le serveur'];
+    }
+}
+
+function stopServer() {
+    $configPath = __DIR__ . '/../core/config/settings.json';
+    $config = ['port' => 5000];
+    
+    if (file_exists($configPath)) {
+        $savedConfig = json_decode(file_get_contents($configPath), true);
+        if ($savedConfig && isset($savedConfig['server'])) {
+            $config = array_merge($config, $savedConfig['server']);
+        }
+    }
+    
+    $port = $config['port'];
+    
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        exec("for /f \"tokens=5\" %a in ('netstat -aon ^| find \":$port\"') do taskkill /f /pid %a > nul 2>&1");
+    } else {
+        exec("pkill -f 'php -S.*:$port' > /dev/null 2>&1");
+    }
+    
+    return ['success' => true, 'message' => 'Serveur arrêté'];
+}
+
+function getServerStatus() {
+    $configPath = __DIR__ . '/../core/config/settings.json';
+    $config = ['port' => 5000, 'host' => '0.0.0.0'];
+    
+    if (file_exists($configPath)) {
+        $savedConfig = json_decode(file_get_contents($configPath), true);
+        if ($savedConfig && isset($savedConfig['server'])) {
+            $config = array_merge($config, $savedConfig['server']);
+        }
+    }
+    
+    $port = $config['port'];
+    $host = $config['host'];
+    
+    $connection = @fsockopen($host === '0.0.0.0' ? 'localhost' : $host, $port, $errno, $errstr, 1);
+    if ($connection) {
+        fclose($connection);
+        return [
+            'success' => true,
+            'message' => "Serveur actif sur $host:$port",
+            'data' => ['status' => 'running', 'port' => $port, 'host' => $host]
+        ];
+    } else {
+        return [
+            'success' => true,
+            'message' => "Serveur arrêté",
+            'data' => ['status' => 'stopped', 'port' => $port, 'host' => $host]
+        ];
+    }
+}
+
 function showHelp() {
     return [
         'success' => true,
@@ -261,6 +380,9 @@ function showHelp() {
                 'listDir dossier' => 'Lister le contenu d\'un dossier',
                 'createDir nouveau-dossier' => 'Créer un nouveau dossier',
                 'deleteFile nom.txt' => 'Supprimer un fichier',
+                'startServer' => 'Démarrer le serveur PHP',
+                'stopServer' => 'Arrêter le serveur PHP',
+                'serverStatus' => 'Vérifier l\'état du serveur',
                 'help' => 'Afficher cette aide'
             ],
             'examples' => [
@@ -268,7 +390,9 @@ function showHelp() {
                 'readFile test.txt',
                 'listDir .',
                 'createDir mon-projet',
-                'deleteFile test.txt'
+                'deleteFile test.txt',
+                'startServer',
+                'serverStatus'
             ]
         ]
     ];

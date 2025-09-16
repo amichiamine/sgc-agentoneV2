@@ -1,0 +1,41 @@
+{
+  "appearance": {
+    "title": "SGC-AgentOne",
+    "subtitle": "v3.0 - Architecture Modulaire",
+    "darkMode": true,
+    "primaryColor": "#1ab8b8",
+    "secondaryColor": "#2d3a45",
+    "accentColor": "#1ab8b8",
+    "fontSize": "medium"
+  },
+  "server": {
+    "port": 5000,
+    "host": "0.0.0.0",
+    "autoStart": false,
+    "debugMode": false
+  },
+  "editor": {
+    "theme": "dark",
+    "fontSize": 14,
+    "tabSize": 4,
+    "lineNumbers": true,
+    "autoSave": true
+  },
+  "security": {
+    "blindExec": false,
+    "maxFileSize": 50,
+    "actionLogging": true,
+    "sessionTimeout": 60
+  },
+  "advanced": {
+    "memoryLimit": 256,
+    "executionTime": 300,
+    "fileCache": true,
+    "backupFrequency": "weekly"
+  },
+  "_meta": {
+    "version": "3.0",
+    "saved_at": "2025-01-27 10:00:00",
+    "php_version": "8.0.0"
+  }
+}

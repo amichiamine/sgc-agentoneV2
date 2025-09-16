@@ -1,0 +1,28 @@
+[
+  {
+    "id": "default_1",
+    "name": "Créer structure projet web",
+    "description": "Crée une structure de base pour un projet web avec HTML, CSS et JS",
+    "category": "development",
+    "content": "createDir assets\ncreateDir assets/css\ncreateDir assets/js\ncreateDir assets/images\ncreateFile index.html : <!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Mon Projet</title>\n    <link rel=\"stylesheet\" href=\"assets/css/style.css\">\n</head>\n<body>\n    <h1>Bienvenue</h1>\n    <script src=\"assets/js/script.js\"></script>\n</body>\n</html>\ncreateFile assets/css/style.css : /* Styles CSS */\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 20px;\n}\ncreateFile assets/js/script.js : // JavaScript\nconsole.log('Projet initialisé');",
+    "tags": ["web", "html", "css", "javascript", "structure"],
+    "shortcut": "Ctrl+Alt+W",
+    "favorite": true,
+    "usage_count": 0,
+    "created": "2025-01-27 10:00:00",
+    "modified": "2025-01-27 10:00:00"
+  },
+  {
+    "id": "default_2",
+    "name": "Créer API PHP simple",
+    "description": "Génère une API REST basique en PHP avec gestion JSON",
+    "category": "development",
+    "content": "createDir api\ncreateFile api/index.php : <?php\nheader('Content-Type: application/json');\nheader('Access-Control-Allow-Origin: *');\nheader('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');\nheader('Access-Control-Allow-Headers: Content-Type');\n\n$method = $_SERVER['REQUEST_METHOD'];\n$input = json_decode(file_get_contents('php://input'), true);\n\nswitch ($method) {\n    case 'GET':\n        echo json_encode(['message' => 'API fonctionnelle']);\n        break;\n    case 'POST':\n        echo json_encode(['received' => $input]);\n        break;\n    default:\n        http_response_code(405);\n        echo json_encode(['error' => 'Méthode non autorisée']);\n}\n?>\ncreateFile api/.htaccess : RewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule ^(.*)$ index.php [QSA,L]",
+    "tags": ["php", "api", "rest", "json"],
+    "shortcut": "",
+    "favorite": false,
+    "usage_count": 0,
+    "created": "2025-01-27 10:00:00",
+    "modified": "2025-01-27 10:00:00"
+  }
+]

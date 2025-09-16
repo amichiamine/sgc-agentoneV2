@@ -157,12 +157,36 @@ function getIndexHtmlContent() {
         
         <div id="files" class="view">
             <h2>📁 Gestionnaire de Fichiers</h2>
-            <p>Fonctionnalité en cours de développement...</p>
+            <div class="settings-group">
+                <button class="btn" onclick="loadFileList()">🔄 Actualiser la liste</button>
+                <button class="btn btn-secondary" onclick="createNewFile()">➕ Nouveau fichier</button>
+            </div>
+            <div id="file-list" class="file-list">
+                <p>Cliquez sur "Actualiser" pour voir les fichiers...</p>
+            </div>
         </div>
         
         <div id="settings" class="view">
             <h2>⚙️ Paramètres</h2>
-            <p>Configuration système en cours de développement...</p>
+            <div class="settings-group">
+                <label for="app-title">Titre de l'application</label>
+                <input type="text" id="app-title" value="SGC-AgentOne" placeholder="Nom de l'application">
+            </div>
+            <div class="settings-group">
+                <label for="theme-mode">Thème</label>
+                <select id="theme-mode">
+                    <option value="dark">Sombre</option>
+                    <option value="light">Clair</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="server-port">Port du serveur</label>
+                <input type="number" id="server-port" value="5000" min="1000" max="65535">
+            </div>
+            <div class="settings-group">
+                <button class="btn" onclick="saveSettings()">💾 Enregistrer</button>
+                <button class="btn btn-secondary" onclick="resetSettings()">🔄 Réinitialiser</button>
+            </div>
         </div>
     </div>
     
@@ -184,85 +208,162 @@ function getIndexHtmlContent() {
                 document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
                 document.getElementById(view).classList.add("active");
             });
-        });
-        
-        // Chat functionality
-        const messagesDiv = document.getElementById("messages");
-        const messageInput = document.getElementById("message-input");
-        const sendBtn = document.getElementById("send-btn");
-        
-        function addMessage(content, type = "user") {
-            const div = document.createElement("div");
-            div.className = `message ${type}`;
-            div.innerHTML = type === "user" ? 
-                `<strong>Vous:</strong> ${content}` : 
-                `<strong>SGC-AgentOne:</strong> ${content}`;
-            messagesDiv.appendChild(div);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-        
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
             
-            addMessage(message, "user");
-            messageInput.value = "";
-            sendBtn.disabled = true;
-            sendBtn.textContent = "...";
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: message })
-                });
+            // Fonctions pour la gestion des fichiers
+            window.loadFileList = async function() {
+                const fileListDiv = document.getElementById("file-list");
+                fileListDiv.innerHTML = '<p class="loading">Chargement des fichiers...</p>';
                 
-                const result = await response.json();
-                
-                if (result.success) {
-                    addMessage(result.response || "Commande exécutée avec succès", "ai");
-                } else {
-                    addMessage(`Erreur: ${result.error}`, "ai");
+                try {
+                    const response = await fetch("?action=listFiles");
+                    const result = await response.json();
+                    
+                    if (result.success && result.files) {
+                        let html = '<h3>Fichiers du projet :</h3>';
+                        result.files.forEach(file => {
+                            const icon = file.type === 'dir' ? '📁' : '📄';
+                            html += `<div class="file-item" onclick="selectFile('${file.name}')">${icon} ${file.name}</div>`;
+                        });
+                        fileListDiv.innerHTML = html;
+                    } else {
+                        fileListDiv.innerHTML = '<p class="error">Erreur lors du chargement des fichiers</p>';
+                    }
+                } catch (error) {
+                    fileListDiv.innerHTML = '<p class="error">Erreur de connexion</p>';
                 }
-            } catch (error) {
-                addMessage(`Erreur de connexion: ${error.message}`, "ai");
-            }
+            };
             
-            sendBtn.disabled = false;
-            sendBtn.textContent = "Envoyer";
-        }
-        
-        sendBtn.addEventListener("click", sendMessage);
-        messageInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") sendMessage();
+            window.createNewFile = function() {
+                const filename = prompt("Nom du nouveau fichier :");
+                if (filename) {
+                    addMessage(`createFile ${filename} : // Nouveau fichier`, "user");
+                    sendMessage();
+                }
+            };
+            
+            window.selectFile = function(filename) {
+                addMessage(`readFile ${filename}`, "user");
+                sendMessage();
+            };
+            
+            // Fonctions pour les paramètres
+            window.saveSettings = function() {
+                const title = document.getElementById("app-title").value;
+                const theme = document.getElementById("theme-mode").value;
+                const port = document.getElementById("server-port").value;
+                
+                // Sauvegarder dans localStorage
+                localStorage.setItem("sgc-settings", JSON.stringify({
+                    title: title,
+                    theme: theme,
+                    port: port
+                }));
+                
+                alert("Paramètres sauvegardés !");
+                
+                // Appliquer le titre
+                document.querySelector("#header h1").textContent = title;
+            };
+            
+            window.resetSettings = function() {
+                if (confirm("Réinitialiser tous les paramètres ?")) {
+                    localStorage.removeItem("sgc-settings");
+                    document.getElementById("app-title").value = "SGC-AgentOne";
+                    document.getElementById("theme-mode").value = "dark";
+                    document.getElementById("server-port").value = "5000";
+                    alert("Paramètres réinitialisés !");
+                }
+            };
+            
+            // Charger les paramètres sauvegardés
+            const savedSettings = localStorage.getItem("sgc-settings");
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                document.getElementById("app-title").value = settings.title || "SGC-AgentOne";
+                document.getElementById("theme-mode").value = settings.theme || "dark";
+                document.getElementById("server-port").value = settings.port || "5000";
+                document.querySelector("#header h1").textContent = settings.title || "SGC-AgentOne";
+            }
         });
-    </script>
-</body>
-</html>';
-}
-
-/**
- * Création de l'API de base
- */
-function createBasicAPI($root) {
-    $chatAPI = $root . '/api/chat.php';
-    if (!file_exists($chatAPI)) {
-        $content = '<?php
-header("Content-Type: application/json");
-$input = json_decode(file_get_contents("php://input"), true);
-
-if (!$input || !isset($input["message"])) {
-    echo json_encode(["error" => "Message manquant"]);
-    exit;
-}
-
-$message = trim($input["message"]);
-
-// Interpréteur simple
-if (strpos($message, ":") !== false) {
-    list($actionTarget, $content) = explode(":", $message, 2);
+        
     $parts = explode(" ", trim($actionTarget), 2);
     $action = $parts[0];
+    // Fonctions pour la gestion des fichiers
+    window.loadFileList = async function() {
+        const fileListDiv = document.getElementById("file-list");
+        fileListDiv.innerHTML = '<p class="loading">Chargement des fichiers...</p>';
+        
+        try {
+            const response = await fetch("?action=listFiles");
+            const result = await response.json();
+            
+            if (result.success && result.files) {
+                let html = '<h3>Fichiers du projet :</h3>';
+                result.files.forEach(file => {
+                    const icon = file.type === 'dir' ? '📁' : '📄';
+                    html += `<div class="file-item" onclick="selectFile('${file.name}')">${icon} ${file.name}</div>`;
+                });
+                fileListDiv.innerHTML = html;
+            } else {
+                fileListDiv.innerHTML = '<p class="error">Erreur lors du chargement des fichiers</p>';
+            }
+        } catch (error) {
+            fileListDiv.innerHTML = '<p class="error">Erreur de connexion</p>';
+        }
+    };
+    
+    window.createNewFile = function() {
+        const filename = prompt("Nom du nouveau fichier :");
+        if (filename) {
+            addMessage(`createFile ${filename} : // Nouveau fichier`, "user");
+            sendMessage();
+        }
+    };
+    
+    window.selectFile = function(filename) {
+        addMessage(`readFile ${filename}`, "user");
+        sendMessage();
+    };
+    
+    // Fonctions pour les paramètres
+    window.saveSettings = function() {
+        const title = document.getElementById("app-title").value;
+        const theme = document.getElementById("theme-mode").value;
+        const port = document.getElementById("server-port").value;
+        
+        // Sauvegarder dans localStorage
+        localStorage.setItem("sgc-settings", JSON.stringify({
+            title: title,
+            theme: theme,
+            port: port
+        }));
+        
+        alert("Paramètres sauvegardés !");
+        
+        // Appliquer le titre
+        document.querySelector("#header h1").textContent = title;
+    };
+    
+    window.resetSettings = function() {
+        if (confirm("Réinitialiser tous les paramètres ?")) {
+            localStorage.removeItem("sgc-settings");
+            document.getElementById("app-title").value = "SGC-AgentOne";
+            document.getElementById("theme-mode").value = "dark";
+            document.getElementById("server-port").value = "5000";
+            alert("Paramètres réinitialisés !");
+        }
+    };
+    
+    // Charger les paramètres sauvegardés
+    const savedSettings = localStorage.getItem("sgc-settings");
+    if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        document.getElementById("app-title").value = settings.title || "SGC-AgentOne";
+        document.getElementById("theme-mode").value = settings.theme || "dark";
+        document.getElementById("server-port").value = settings.port || "5000";
+        document.querySelector("#header h1").textContent = settings.title || "SGC-AgentOne";
+    }
+    
     $target = isset($parts[1]) ? trim($parts[1]) : "";
     $content = trim($content);
     
@@ -338,6 +439,21 @@ try {
         include $apiPath . '/chat.php';
         exit;
     }
+            case 'listFiles':
+                header('Content-Type: application/json');
+                $files = [];
+                $items = scandir($projectRoot);
+                foreach ($items as $item) {
+                    if ($item !== '.' && $item !== '..') {
+                        $files[] = [
+                            'name' => $item,
+                            'type' => is_dir($projectRoot . '/' . $item) ? 'dir' : 'file'
+                        ];
+                    }
+                }
+                echo json_encode(['success' => true, 'files' => $files]);
+                exit;
+                
     
     // Vérification et création automatique de la structure
     if (!file_exists($indexFile)) {

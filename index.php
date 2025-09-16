@@ -157,12 +157,50 @@ function getIndexHtmlContent() {
         
         <div id="files" class="view">
             <h2>📁 Gestionnaire de Fichiers</h2>
-            <p>Fonctionnalité en cours de développement...</p>
+            <div style="padding: 20px; background: #1e293b; border-radius: 8px; margin: 16px 0;">
+                <h3>📂 Explorateur de Fichiers</h3>
+                <div id="file-list" style="margin-top: 16px;">
+                    <div style="padding: 8px; background: #334155; border-radius: 4px; margin: 4px 0; cursor: pointer;">
+                        📁 core/
+                    </div>
+                    <div style="padding: 8px; background: #334155; border-radius: 4px; margin: 4px 0; cursor: pointer;">
+                        📁 api/
+                    </div>
+                    <div style="padding: 8px; background: #334155; border-radius: 4px; margin: 4px 0; cursor: pointer;">
+                        📄 index.php
+                    </div>
+                    <div style="padding: 8px; background: #334155; border-radius: 4px; margin: 4px 0; cursor: pointer;">
+                        📄 .htaccess
+                    </div>
+                </div>
+                <button onclick="loadFileList()" style="margin-top: 16px; padding: 8px 16px; background: #38bdf8; color: #0a0f1c; border: none; border-radius: 4px; cursor: pointer;">
+                    🔄 Actualiser
+                </button>
+            </div>
         </div>
         
         <div id="settings" class="view">
             <h2>⚙️ Paramètres</h2>
-            <p>Configuration système en cours de développement...</p>
+            <div style="padding: 20px; background: #1e293b; border-radius: 8px; margin: 16px 0;">
+                <h3>🎨 Apparence</h3>
+                <div style="margin: 16px 0;">
+                    <label style="display: block; margin-bottom: 8px;">Thème:</label>
+                    <select id="theme-select" style="padding: 8px; background: #334155; color: #e2e8f0; border: none; border-radius: 4px; width: 200px;">
+                        <option value="dark">🌙 Sombre</option>
+                        <option value="light">☀️ Clair</option>
+                    </select>
+                </div>
+                
+                <h3 style="margin-top: 24px;">⚡ Serveur</h3>
+                <div style="margin: 16px 0;">
+                    <label style="display: block; margin-bottom: 8px;">Port:</label>
+                    <input type="number" id="port-input" value="5000" style="padding: 8px; background: #334155; color: #e2e8f0; border: none; border-radius: 4px; width: 100px;">
+                </div>
+                
+                <button onclick="saveSettings()" style="margin-top: 16px; padding: 8px 16px; background: #38bdf8; color: #0a0f1c; border: none; border-radius: 4px; cursor: pointer;">
+                    💾 Enregistrer
+                </button>
+            </div>
         </div>
     </div>
     
@@ -176,13 +214,21 @@ function getIndexHtmlContent() {
             btn.addEventListener("click", () => {
                 const view = btn.dataset.view;
                 
+                // Debug
+                console.log("Bouton cliqué:", view);
+                
                 // Mettre à jour navigation
                 document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 
                 // Mettre à jour vues
                 document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-                document.getElementById(view).classList.add("active");
+                const targetView = document.getElementById(view);
+                if (targetView) {
+                    targetView.classList.add("active");
+                } else {
+                    console.error("Vue non trouvée:", view);
+                }
             });
         });
         
@@ -230,6 +276,30 @@ function getIndexHtmlContent() {
             
             sendBtn.disabled = false;
             sendBtn.textContent = "Envoyer";
+        }
+        
+        // Fonctions pour les autres vues
+        function loadFileList() {
+            fetch("?action=files")
+                .then(r => r.json())
+                .then(data => {
+                    console.log("Fichiers:", data);
+                    // Mise à jour de la liste des fichiers
+                })
+                .catch(e => console.error("Erreur:", e));
+        }
+        
+        function saveSettings() {
+            const theme = document.getElementById("theme-select").value;
+            const port = document.getElementById("port-input").value;
+            
+            fetch("?action=settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ theme, port })
+            })
+            .then(r => r.json())
+            .then(data => console.log("Paramètres sauvés:", data));
         }
         
         sendBtn.addEventListener("click", sendMessage);

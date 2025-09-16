@@ -134,7 +134,7 @@ try {
                 exit;
                 
             case 'listFiles':
-                header('Content-Type: application/json');
+                header("Content-Type: application/json");
                 $files = [];
                 $items = scandir($projectRoot);
                 foreach ($items as $item) {

@@ -1,7 +1,8 @@
 <?php
 /**
- * SGC-AgentOne v2.1 - Interface Complète
- * Point d'entrée universel avec toutes les vues
+ * SGC-AgentOne v2.1 - Solution Complète et Optimale
+ * Point d'entrée universel avec auto-installation
+ * Interface complète avec toutes les fonctionnalités
  */
 
 // === CONFIGURATION ===
@@ -42,93 +43,232 @@ function createProjectStructure($root) {
     }
 }
 
-// Gestion des routes API intégrées
-$requestUri = $_SERVER['REQUEST_URI'] ?? '';
-$route = parse_url($requestUri, PHP_URL_PATH);
-
-// API Chat intégrée
-if (strpos($route, '/api/chat') !== false) {
-    header('Content-Type: application/json');
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        echo json_encode(['error' => 'Méthode non autorisée']);
-        exit;
-    }
+// === GESTION API ===
+if (isset($_GET['action'])) {
+    header("Content-Type: application/json");
     
-    $input = json_decode(file_get_contents('php://input'), true);
-    if (!$input || !isset($input['message'])) {
-        echo json_encode(['error' => 'Message manquant']);
-        exit;
-    }
-    
-    $message = trim($input['message']);
-    
-    // Traitement des commandes
-    if (strpos($message, 'createFile') === 0) {
-        if (preg_match('/createFile\s+(.+?)\s*:\s*(.*)/', $message, $matches)) {
-            $filename = trim($matches[1]);
-            $content = trim($matches[2]);
-            $filepath = __DIR__ . '/' . $filename;
-            $dir = dirname($filepath);
-            if (!is_dir($dir)) mkdir($dir, 0755, true);
-            file_put_contents($filepath, $content);
-            echo json_encode(['success' => true, 'result' => "✅ Fichier '$filename' créé avec succès!"]);
-        } else {
-            echo json_encode(['error' => 'Format: createFile filename.ext : contenu']);
-        }
-    }
-    elseif (strpos($message, 'readFile') === 0) {
-        if (preg_match('/readFile\s+(.+)/', $message, $matches)) {
-            $filename = trim($matches[1]);
-            $filepath = __DIR__ . '/' . $filename;
-            if (file_exists($filepath)) {
-                $content = file_get_contents($filepath);
-                echo json_encode(['success' => true, 'result' => "📄 Contenu de '$filename':\n\n$content"]);
-            } else {
-                echo json_encode(['error' => "❌ Fichier '$filename' introuvable"]);
+    switch ($_GET['action']) {
+        case 'chat':
+            $input = json_decode(file_get_contents("php://input"), true);
+            if (!$input || !isset($input["message"])) {
+                echo json_encode(["error" => "Message manquant"]);
+                exit;
             }
-        }
-    }
-    elseif (strpos($message, 'listDir') === 0) {
-        $dir = __DIR__;
-        if (preg_match('/listDir\s+(.+)/', $message, $matches)) {
-            $dir = __DIR__ . '/' . trim($matches[1]);
-        }
-        if (is_dir($dir)) {
-            $items = scandir($dir);
-            $result = "📁 Contenu du dossier:\n\n";
-            foreach ($items as $item) {
-                if ($item != '.' && $item != '..') {
-                    $icon = is_dir($dir . '/' . $item) ? '📁' : '📄';
-                    $result .= "$icon $item\n";
+            
+            $message = trim($input["message"]);
+            
+            if (strpos($message, ":") !== false) {
+                list($actionTarget, $content) = explode(":", $message, 2);
+                $actionTarget = trim($actionTarget);
+                $content = trim($content);
+                
+                $parts = explode(" ", trim($actionTarget), 2);
+                $action = $parts[0];
+                $target = isset($parts[1]) ? trim($parts[1]) : "";
+                
+                switch ($action) {
+                    case "createFile":
+                        if ($target && $content) {
+                            $filePath = $projectRoot . '/' . $target;
+                            $dir = dirname($filePath);
+                            if (!is_dir($dir)) mkdir($dir, 0755, true);
+                            file_put_contents($filePath, $content);
+                            echo json_encode(["success" => true, "result" => "✅ Fichier créé: $target"]);
+                        } else {
+                            echo json_encode(["error" => "Cible ou contenu manquant"]);
+                        }
+                        break;
+                        
+                    case "readFile":
+                        $filePath = $projectRoot . '/' . $target;
+                        if ($target && file_exists($filePath)) {
+                            $fileContent = file_get_contents($filePath);
+                            echo json_encode(["success" => true, "result" => "📄 Contenu de $target:\n\n" . $fileContent]);
+                        } else {
+                            echo json_encode(["error" => "Fichier introuvable: $target"]);
+                        }
+                        break;
+                        
+                    case "listDir":
+                        $dir = $target ?: ".";
+                        $dirPath = $projectRoot . '/' . $dir;
+                        if (is_dir($dirPath)) {
+                            $files = array_diff(scandir($dirPath), [".", ".."]);
+                            $list = [];
+                            foreach ($files as $f) {
+                                $icon = is_dir("$dirPath/$f") ? "📁" : "📄";
+                                $size = is_file("$dirPath/$f") ? " (" . round(filesize("$dirPath/$f")/1024, 2) . " KB)" : "";
+                                $list[] = "$icon $f$size";
+                            }
+                            $result = "📂 Contenu de $dir:\n\n" . implode("\n", $list);
+                            echo json_encode(["success" => true, "result" => $result]);
+                        } else {
+                            echo json_encode(["error" => "Dossier introuvable: $dir"]);
+                        }
+                        break;
+                        
+                    case "createDir":
+                        if ($target) {
+                            $dirPath = $projectRoot . '/' . $target;
+                            if (!is_dir($dirPath)) {
+                                mkdir($dirPath, 0755, true);
+                                echo json_encode(["success" => true, "result" => "📁 Dossier créé: $target"]);
+                            } else {
+                                echo json_encode(["error" => "Le dossier existe déjà: $target"]);
+                            }
+                        } else {
+                            echo json_encode(["error" => "Nom du dossier manquant"]);
+                        }
+                        break;
+                        
+                    case "deleteFile":
+                        $filePath = $projectRoot . '/' . $target;
+                        if ($target && file_exists($filePath)) {
+                            unlink($filePath);
+                            echo json_encode(["success" => true, "result" => "🗑️ Fichier supprimé: $target"]);
+                        } else {
+                            echo json_encode(["error" => "Fichier introuvable: $target"]);
+                        }
+                        break;
+                        
+                    case "serverStatus":
+                        $port = 5000;
+                        $connection = @fsockopen('localhost', $port, $errno, $errstr, 1);
+                        if ($connection) {
+                            fclose($connection);
+                            echo json_encode(["success" => true, "result" => "🟢 Serveur actif sur le port $port"]);
+                        } else {
+                            echo json_encode(["success" => true, "result" => "🔴 Serveur inactif sur le port $port"]);
+                        }
+                        break;
+                        
+                    case "backup":
+                        $backupDir = $projectRoot . '/backups';
+                        if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
+                        $backupFile = $backupDir . '/backup_' . date('Y-m-d_H-i-s') . '.zip';
+                        
+                        if (class_exists('ZipArchive')) {
+                            $zip = new ZipArchive();
+                            if ($zip->open($backupFile, ZipArchive::CREATE) === TRUE) {
+                                $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($projectRoot));
+                                foreach ($iterator as $file) {
+                                    if ($file->isFile() && strpos($file->getPathname(), '/backups/') === false) {
+                                        $relativePath = substr($file->getPathname(), strlen($projectRoot) + 1);
+                                        $zip->addFile($file->getPathname(), $relativePath);
+                                    }
+                                }
+                                $zip->close();
+                                echo json_encode(["success" => true, "result" => "💾 Sauvegarde créée: " . basename($backupFile)]);
+                            } else {
+                                echo json_encode(["error" => "Impossible de créer l'archive"]);
+                            }
+                        } else {
+                            echo json_encode(["error" => "Extension ZIP non disponible"]);
+                        }
+                        break;
+                        
+                    default:
+                        echo json_encode(["error" => "Action inconnue: $action. Actions: createFile, readFile, listDir, createDir, deleteFile, serverStatus, backup"]);
+                }
+            } else {
+                echo json_encode(["error" => "Format invalide. Utilisez: action cible : contenu"]);
+            }
+            exit;
+            
+        case 'listFiles':
+            $path = $_GET['path'] ?? '.';
+            $fullPath = $projectRoot . '/' . $path;
+            $files = [];
+            
+            if (is_dir($fullPath)) {
+                $items = scandir($fullPath);
+                foreach ($items as $item) {
+                    if ($item !== '.' && $item !== '..') {
+                        $itemPath = $fullPath . '/' . $item;
+                        $files[] = [
+                            'name' => $item,
+                            'type' => is_dir($itemPath) ? 'dir' : 'file',
+                            'size' => is_file($itemPath) ? filesize($itemPath) : 0,
+                            'modified' => filemtime($itemPath),
+                            'extension' => is_file($itemPath) ? pathinfo($item, PATHINFO_EXTENSION) : ''
+                        ];
+                    }
                 }
             }
-            echo json_encode(['success' => true, 'result' => $result]);
-        } else {
-            echo json_encode(['error' => '❌ Dossier introuvable']);
-        }
+            
+            echo json_encode(['success' => true, 'files' => $files, 'path' => $path]);
+            exit;
+            
+        case 'saveSettings':
+            $input = json_decode(file_get_contents("php://input"), true);
+            if ($input) {
+                $settingsPath = $projectRoot . '/core/config/settings.json';
+                file_put_contents($settingsPath, json_encode($input, JSON_PRETTY_PRINT));
+                echo json_encode(['success' => true, 'message' => 'Paramètres sauvegardés']);
+            } else {
+                echo json_encode(['error' => 'Données invalides']);
+            }
+            exit;
+            
+        case 'loadSettings':
+            $settingsPath = $projectRoot . '/core/config/settings.json';
+            if (file_exists($settingsPath)) {
+                $settings = json_decode(file_get_contents($settingsPath), true);
+                echo json_encode(['success' => true, 'settings' => $settings]);
+            } else {
+                echo json_encode(['success' => true, 'settings' => []]);
+            }
+            exit;
+            
+        case 'getLogs':
+            $logType = $_GET['type'] ?? 'actions';
+            $logFile = $projectRoot . '/core/logs/' . $logType . '.log';
+            
+            if (file_exists($logFile)) {
+                $logs = array_slice(array_reverse(file($logFile, FILE_IGNORE_NEW_LINES)), 0, 100);
+                echo json_encode(['success' => true, 'logs' => array_reverse($logs)]);
+            } else {
+                echo json_encode(['success' => true, 'logs' => []]);
+            }
+            exit;
+            
+        case 'clearLogs':
+            $logFiles = ['actions.log', 'chat.log', 'errors.log'];
+            foreach ($logFiles as $logFile) {
+                $path = $projectRoot . '/core/logs/' . $logFile;
+                if (file_exists($path)) {
+                    file_put_contents($path, '');
+                }
+            }
+            echo json_encode(['success' => true, 'message' => 'Logs effacés']);
+            exit;
     }
-    else {
-        echo json_encode(['success' => true, 'result' => "🤖 SGC-AgentOne: Commandes disponibles:\n\n• createFile nom.ext : contenu\n• readFile nom.ext\n• listDir [dossier]\n• createDir nom_dossier\n• deleteFile nom.ext"]);
-    }
+}
+
+// Mode debug
+if ($debug) {
+    echo "<!DOCTYPE html><html><head><title>🔍 Debug SGC-AgentOne</title>";
+    echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#0a0f1c;color:#e2e8f0;}</style></head><body>";
+    echo "<h1>🔍 Debug SGC-AgentOne v2.1</h1>";
+    echo "<p><strong>Racine:</strong> " . htmlspecialchars($projectRoot) . "</p>";
+    echo "<p><strong>PHP:</strong> " . PHP_VERSION . "</p>";
+    echo "<p><strong>Extensions:</strong> " . implode(', ', get_loaded_extensions()) . "</p>";
+    echo "<p><a href='?' style='color:#38bdf8;'>🚀 Accéder à SGC-AgentOne</a></p>";
+    echo "</body></html>";
     exit;
 }
 
-// API Auth
-if (strpos($route, '/api/auth') !== false) {
-    session_start();
-    header('Content-Type: application/json');
-    $token = bin2hex(random_bytes(32));
-    $_SESSION['auth_token'] = $token;
-    echo json_encode(['token' => $token]);
-    exit;
-}
+// Créer la structure
+createProjectStructure($projectRoot);
 
-// Interface principale ?>
+// Interface principale
+header('Content-Type: text/html; charset=utf-8');
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SGC-AgentOne - Interface Complète</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SGC-AgentOne v2.1 - Assistant Universel</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -452,204 +592,230 @@ if (strpos($route, '/api/auth') !== false) {
             margin-bottom: 8px; 
             border-radius: 8px;
             cursor: pointer; 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
-            background: hsl(222, 84%, 5%); 
-            color: hsl(210, 40%, 95%); 
-            overflow: hidden; 
-            height: 100vh; 
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid transparent;
         }
         
-        /* Header */
-        #header { 
-            background: hsl(215, 28%, 17%); 
-            padding: 12px 20px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            border-bottom: 1px solid hsl(217, 19%, 20%); 
+        .file-item:hover { 
+            background: var(--bg-tertiary);
+            border-color: var(--accent);
+            transform: translateX(4px);
         }
         
-        #header .logo { 
-            font-size: 1.2rem; 
-            font-weight: 700; 
-            color: hsl(188, 95%, 42%); 
+        .file-icon {
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
         }
         
-        #header .subtitle { 
-            font-size: 0.8rem; 
-            color: hsl(217, 10%, 58%); 
-            margin-top: 2px; 
+        .file-info {
+            flex: 1;
         }
         
-        /* Navigation */
-        #nav-menu { 
-            display: flex; 
-            gap: 8px; 
-            flex-wrap: wrap;
+        .file-name {
+            font-weight: 500;
+            color: var(--text-primary);
         }
         
-        #nav-menu button { 
-            background: hsl(215, 16%, 25%); 
-            border: 1px solid hsl(217, 19%, 20%); 
-            color: hsl(210, 40%, 95%); 
-            padding: 8px 16px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-size: 0.9rem; 
-            transition: all 0.3s ease; 
+        .file-meta {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
         }
         
-        #nav-menu button:hover { 
-            background: hsl(215, 16%, 30%); 
+        /* Code Editor */
+        .code-editor {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            resize: vertical;
+            min-height: 300px;
         }
         
-        #nav-menu button.active { 
-            background: hsl(188, 95%, 42%); 
-            color: hsl(222, 84%, 5%); 
-            font-weight: 600;
+        /* Terminal */
+        .terminal {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            padding: 20px;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 2px solid var(--border);
         }
         
-        /* Corps principal */
-        #main-content { 
-            height: calc(100vh - 120px); 
-            overflow: hidden; 
+        /* Status Messages */
+        .status {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 500;
         }
         
-        .view { 
-            display: none; 
-            height: 100%; 
-            overflow: hidden; 
+        .status.success { 
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success); 
+            border: 1px solid var(--success);
         }
         
-        .view.active { 
-            display: flex; 
-            flex-direction: column;
+        .status.error { 
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error); 
+            border: 1px solid var(--error);
+        }
+        
+        .status.warning { 
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning); 
+            border: 1px solid var(--warning);
         }
         
         /* Footer */
-        #footer { 
-            background: hsl(215, 28%, 17%); 
+        #status { 
+            position: fixed; 
+            bottom: 0; 
+            left: 0; 
+            right: 0; 
+            background: var(--bg-secondary);
             padding: 8px 20px; 
             font-size: 0.8rem; 
-            color: hsl(217, 10%, 58%); 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            border-top: 1px solid hsl(217, 19%, 20%);
-        }
-        
-        /* Vue Chat */
-        #chat-container { 
-            display: flex; 
-            flex-direction: column; 
-            height: 100%; 
-            background: hsl(215, 28%, 17%); 
-            margin: 8px;
-            border-radius: 12px; 
-            overflow: hidden; 
-        }
-        
-        #messages { 
-            flex: 1; 
-            padding: 20px; 
-            overflow-y: auto; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px; 
-        }
-        
-        .message { 
-            max-width: 80%; 
-            padding: 12px 16px; 
-            border-radius: 12px; 
-            font-size: 0.95rem; 
-            line-height: 1.5; 
-            word-wrap: break-word; 
-        }
-        
-        .message.user { 
-            align-self: flex-end; 
-            background: hsl(188, 95%, 42%); 
-            color: hsl(222, 84%, 5%); 
-        }
-        
-        .message.ai { 
-            align-self: flex-start; 
-            background: hsl(215, 16%, 25%); 
-            color: hsl(210, 40%, 95%); 
-            border: 1px solid hsl(217, 19%, 20%); 
-        }
-        
-        #input-container { 
-            display: flex; 
-            padding: 20px; 
-            background: hsl(222, 84%, 8%); 
-            border-top: 1px solid hsl(217, 19%, 20%); 
-        }
-        
-        #input { 
-            flex: 1; 
-            padding: 12px 16px; 
-            border: none; 
-            border-radius: 24px; 
-            background: hsl(222, 84%, 4%); 
-            color: hsl(210, 40%, 95%); 
-            font-family: inherit; 
-            outline: none; 
-            font-size: 0.95rem;
-        }
-        
-        #send { 
-            margin-left: 12px; 
-            padding: 12px 20px; 
-            border: none; 
-            border-radius: 24px; 
-            background: hsl(188, 95%, 42%); 
-            color: hsl(222, 84%, 5%); 
-            cursor: pointer; 
-            font-weight: 600; 
-            transition: all 0.3s ease; 
-        }
-        
-        #send:hover { 
-            background: hsl(188, 95%, 48%); 
-        }
-        
-        /* Autres vues - Layout de base */
-        .view-container {
+            color: var(--text-secondary); 
+            border-top: 1px solid var(--border);
             display: flex;
-            flex-direction: column;
-            height: 100%;
-            background: hsl(215, 28%, 17%);
-            margin: 8px;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-        
-        .view-header {
-            padding: 16px 20px;
-            background: hsl(222, 84%, 8%);
-            border-bottom: 1px solid hsl(217, 19%, 20%);
-            display: flex;
-            align-items: center;
             justify-content: space-between;
-        }
-        
-        .view-content {
-            flex: 1;
-            overflow: auto;
-            padding: 20px;
+            align-items: center;
+            z-index: 50;
         }
         
         /* Responsive */
         @media (max-width: 768px) {
-            #header { flex-direction: column; gap: 12px; }
-            #nav-menu { width: 100%; justify-content: space-around; }
-            #nav-menu button { flex: 1; min-width: 80px; margin: 2px; }
-            .message { max-width: 95%; }
+            #header {
+                flex-direction: column;
+                gap: 12px;
+                padding: 16px;
+            }
+            
+            #nav {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            #nav button {
+                flex: 1;
+                min-width: 0;
+                padding: 10px 8px;
+                font-size: 0.8rem;
+            }
+            
+            .view {
+                padding: 16px;
+            }
+            
+            .message {
+                margin-left: 0;
+                margin-right: 0;
+            }
+            
+            #input-area {
+                flex-direction: column;
+            }
+            
+            #message-input {
+                margin-bottom: 12px;
+            }
         }
+        
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        /* Loading */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .tab:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+        
+        /* Utilities */
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .mb-0 { margin-bottom: 0; }
+        .mb-1 { margin-bottom: 8px; }
+        .mb-2 { margin-bottom: 16px; }
+        .mb-3 { margin-bottom: 24px; }
+        .mt-0 { margin-top: 0; }
+        .mt-1 { margin-top: 8px; }
+        .mt-2 { margin-top: 16px; }
+        .mt-3 { margin-top: 24px; }
+        .hidden { display: none; }
+        .flex { display: flex; }
+        .flex-1 { flex: 1; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
+        .gap-4 { gap: 16px; }
     </style>
 </head>
 <body>
@@ -661,15 +827,7 @@ if (strpos($route, '/api/auth') !== false) {
         <div id="nav">
             <button class="nav-btn active" data-view="chat">💬 Chat</button>
             <button class="nav-btn" data-view="files">📁 Fichiers</button>
-            <button data-view="editor">📝 Éditeur</button>
-            <button data-view="terminal">⚡ Terminal</button>
-            <button data-view="server">🖥️ Serveur</button>
-            <button data-view="database">🗄️ Base</button>
-            <button data-view="browser">🌐 Navigateur</button>
-            <button data-view="projects">📂 Projets</button>
-            <button data-view="prompts">📝 Prompts</button>
-            <button data-view="config">⚙️ Config</button>
-            <button data-view="help">❓ Aide</button>
+            <button class="nav-btn" data-view="editor">📝 Éditeur</button>
             <button class="nav-btn" data-view="terminal">⚡ Terminal</button>
             <button class="nav-btn" data-view="server">🖥️ Serveur</button>
             <button class="nav-btn" data-view="database">🗄️ Base</button>
@@ -1503,19 +1661,9 @@ console.log(result.result);</pre>
                 
                 // Mettre à jour navigation
                 document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>📁 Gestionnaire de Fichiers</h2>
-                    <div>
-                        <button onclick="createNewFile()">➕ Nouveau Fichier</button>
-                        <button onclick="createNewFolder()">📁 Nouveau Dossier</button>
-                    </div>
-                </div>
-                <div class="view-content">
-                    <div id="file-tree">
-                        <p>Chargement de l'arborescence...</p>
-                    </div>
-                </div>
+                btn.classList.add("active");
+                
+                // Mettre à jour vues
                 document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
                 const targetView = document.getElementById(view);
                 if (targetView) {
@@ -2181,14 +2329,24 @@ console.log(result.result);</pre>
                 }
             } catch (error) {
                 statusDiv.className = 'status error';
-        <!-- Vue Éditeur -->
-        <div id="editor" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>📝 Éditeur de Code</h2>
-                    <div>
-                        <button onclick="saveCurrentFile()">💾 Sauvegarder</button>
-                        <button onclick="openFile()">📂 Ouvrir</button>
+                statusDiv.innerHTML = `🔌 Erreur: ${error.message}`;
+            }
+        }
+        
+        function listBackups() {
+            const backupList = document.getElementById('backup-list');
+            
+            // Simulation de la liste des sauvegardes
+            const backups = [
+                { name: 'backup_2024-01-15_14-30-25.zip', size: '2.5 MB', date: '2024-01-15 14:30' },
+                { name: 'backup_manuel.zip', size: '2.3 MB', date: '2024-01-15 12:15' }
+            ];
+            
+            if (backups.length === 0) {
+                backupList.innerHTML = `
+                    <div class="text-center" style="padding: 40px; color: var(--text-secondary);">
+                        <div style="font-size: 3rem; margin-bottom: 16px;">💾</div>
+                        <p>Aucune sauvegarde trouvée</p>
                     </div>
                 `;
             } else {
@@ -2348,454 +2506,90 @@ console.log(result.result);</pre>
                 
                 // Avancé
                 port: parseInt(document.getElementById('server-port-setting').value) || 5000,
-                <div style="display: flex; flex: 1; overflow: hidden;">
-                    <div style="width: 250px; background: hsl(222, 84%, 8%); border-right: 1px solid hsl(217, 19%, 20%); overflow-y: auto;">
-                        <div style="padding: 16px;">
-                            <h4>Fichiers Ouverts</h4>
-                            <div id="open-files-list">
-                                <p style="color: hsl(217, 10%, 58%); font-size: 0.9rem;">Aucun fichier ouvert</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex: 1; display: flex; flex-direction: column;">
-                        <textarea id="code-editor" style="flex: 1; background: hsl(222, 84%, 4%); color: hsl(210, 40%, 95%); border: none; outline: none; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; resize: none;" placeholder="Ouvrez un fichier pour commencer à éditer..."></textarea>
-                    </div>
+                host: document.getElementById('server-host-setting').value.trim() || '0.0.0.0',
+                server_timeout: parseInt(document.getElementById('server-timeout').value) || 30,
+                memory_limit: parseInt(document.getElementById('memory-limit').value) || 256,
+                cache_enabled: document.getElementById('cache-enabled').checked,
+                compression: document.getElementById('compression').checked,
+                max_file_size: parseInt(document.getElementById('max-file-size').value) || 50,
+                cache_timeout: parseInt(document.getElementById('cache-timeout').value) || 60
+            };
+            
+            try {
+                const response = await fetch('?action=saveSettings', {
                     method: 'POST',
-            </div>
-        </div>
-
-        <!-- Vue Terminal -->
-        <div id="terminal" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>⚡ Terminal</h2>
-                    <div>
-                        <button onclick="clearTerminal()">🗑️ Effacer</button>
-                        <button onclick="showTerminalHelp()">❓ Aide</button>
-                    </div>
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSettingsStatus('✅ Tous les paramètres ont été sauvegardés', 'success');
+                    
+                    // Appliquer certains changements immédiatement
+                    document.querySelector('#header h1').textContent = `🚀 ${settings.title}`;
                     document.documentElement.style.setProperty('--accent', settings.accent_color);
-                <div style="flex: 1; display: flex; flex-direction: column; background: hsl(222, 84%, 4%); margin: 8px; border-radius: 8px; overflow: hidden;">
-                    <div id="terminal-output" style="flex: 1; padding: 16px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.4;">
-                        <div style="color: hsl(113, 54%, 73%);">SGC-AgentOne Terminal v2.1</div>
-                        <div style="color: hsl(217, 10%, 58%);">Tapez 'help' pour voir les commandes disponibles</div>
-                        <div style="margin-top: 8px;"><span style="color: hsl(188, 95%, 42%);">sgc@localhost:~$</span> <span id="terminal-cursor">_</span></div>
-                    </div>
-                    <div style="display: flex; padding: 12px; background: hsl(215, 28%, 17%); border-top: 1px solid hsl(217, 19%, 20%);">
-                        <span style="color: hsl(188, 95%, 42%); font-family: 'JetBrains Mono', monospace;">sgc@localhost:~$</span>
-                        <input type="text" id="terminal-input" style="flex: 1; margin-left: 8px; background: transparent; border: none; outline: none; color: hsl(210, 40%, 95%); font-family: 'JetBrains Mono', monospace;" placeholder="Tapez une commande...">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Serveur -->
-        <div id="server" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>🖥️ Serveur</h2>
-                    <div>
-                        <button id="server-start">▶️ Démarrer</button>
-                        <button id="server-stop">⏹️ Arrêter</button>
-                        <button id="server-restart">🔄 Redémarrer</button>
-                    </div>
-                </div>
-                <div class="view-content">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                        <div style="background: hsl(222, 84%, 8%); padding: 16px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%);">
-                            <h4 style="color: hsl(188, 95%, 42%); margin-bottom: 8px;">Statut</h4>
-                            <div id="server-status" style="font-size: 1.2rem; font-weight: 600;">🔴 Arrêté</div>
-                        </div>
-                        <div style="background: hsl(222, 84%, 8%); padding: 16px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%);">
-                            <h4 style="color: hsl(188, 95%, 42%); margin-bottom: 8px;">Port</h4>
-                            <div style="font-size: 1.2rem; font-weight: 600;">5000</div>
-                        </div>
-                        <div style="background: hsl(222, 84%, 8%); padding: 16px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%);">
-                            <h4 style="color: hsl(188, 95%, 42%); margin-bottom: 8px;">Uptime</h4>
-                            <div id="server-uptime" style="font-size: 1.2rem; font-weight: 600;">--:--:--</div>
-                        </div>
-                    </div>
-                    <div style="background: hsl(222, 84%, 8%); padding: 16px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%);">
-                        <h4 style="color: hsl(188, 95%, 42%); margin-bottom: 12px;">Logs du Serveur</h4>
-                        <div id="server-logs" style="background: hsl(222, 84%, 4%); padding: 12px; border-radius: 6px; height: 300px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.4;">
-                            <div style="color: hsl(217, 10%, 58%);">En attente de logs...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Base de Données -->
-        <div id="database" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>🗄️ Base de Données</h2>
-                    <div>
-                        <button onclick="executeQuery()">▶️ Exécuter</button>
-                        <button onclick="formatQuery()">🎨 Formater</button>
-                        <button onclick="saveQuery()">💾 Sauvegarder</button>
-                    </div>
-                </div>
-                <div style="display: flex; flex: 1; overflow: hidden;">
-                    <div style="width: 300px; background: hsl(222, 84%, 8%); border-right: 1px solid hsl(217, 19%, 20%); overflow-y: auto;">
-                        <div style="padding: 16px;">
-                            <h4>Tables</h4>
-                            <div id="database-tables">
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">users (0)</div>
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">projects (0)</div>
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">logs (0)</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex: 1; display: flex; flex-direction: column;">
-                        <div style="height: 200px; border-bottom: 1px solid hsl(217, 19%, 20%);">
-                            <textarea id="sql-editor" style="width: 100%; height: 100%; background: hsl(222, 84%, 4%); color: hsl(210, 40%, 95%); border: none; outline: none; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 14px; resize: none;" placeholder="SELECT * FROM users;"></textarea>
-                        </div>
-                        <div style="flex: 1; padding: 16px; overflow: auto;">
-                            <h4 style="margin-bottom: 12px;">Résultats</h4>
-                            <div id="query-results" style="background: hsl(222, 84%, 4%); padding: 12px; border-radius: 6px; min-height: 200px;">
-                                <div style="color: hsl(217, 10%, 58%);">Exécutez une requête pour voir les résultats...</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Navigateur -->
-        <div id="browser" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>🌐 Navigateur</h2>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <button onclick="browserBack()">◀️</button>
-                        <button onclick="browserForward()">▶️</button>
-                        <button onclick="browserRefresh()">🔄</button>
-                        <input type="text" id="browser-url" value="http://localhost:5000" style="width: 300px; padding: 6px 12px; background: hsl(222, 84%, 8%); border: 1px solid hsl(217, 19%, 20%); border-radius: 6px; color: hsl(210, 40%, 95%); outline: none;">
-                        <button onclick="browserGo()">🔍</button>
-                    </div>
-                </div>
-                <div style="flex: 1; margin: 8px; border-radius: 8px; overflow: hidden;">
-                    <iframe id="browser-frame" src="about:blank" style="width: 100%; height: 100%; border: none; background: white;"></iframe>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Projets -->
-        <div id="projects" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>📂 Gestionnaire de Projets</h2>
-                    <div>
-                        <button onclick="createNewProject()">➕ Nouveau Projet</button>
-                        <button onclick="importProject()">📥 Importer</button>
-                        <button onclick="exportProjects()">📤 Exporter</button>
-                    </div>
-                </div>
-                <div class="view-content">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;" id="projects-grid">
-                        <div style="background: hsl(222, 84%, 8%); padding: 20px; border-radius: 12px; border: 1px solid hsl(217, 19%, 20%);">
-                            <h3 style="color: hsl(188, 95%, 42%); margin-bottom: 8px;">SGC-AgentOne</h3>
-                            <p style="color: hsl(217, 10%, 58%); margin-bottom: 12px; font-size: 0.9rem;">Assistant universel PHP</p>
-                            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                                <span style="background: hsl(262, 90%, 20%); color: hsl(262, 90%, 75%); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">PHP</span>
-                                <span style="background: hsl(17, 100%, 20%); color: hsl(17, 100%, 74%); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">HTML</span>
-                                <span style="background: hsl(50, 100%, 20%); color: hsl(50, 100%, 74%); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">JS</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="background: hsl(113, 54%, 20%); color: hsl(113, 54%, 73%); padding: 4px 8px; border-radius: 6px; font-size: 0.8rem;">🟢 Actif</span>
-                                <div>
-                                    <button style="background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; margin-left: 8px;">⭐</button>
-                                    <button style="background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; margin-left: 8px;">📂</button>
-                                    <button style="background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; margin-left: 8px;">⚙️</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Prompts -->
-        <div id="prompts" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>📝 Gestionnaire de Prompts</h2>
-                    <div>
-                        <button onclick="createNewPrompt()">➕ Nouveau Prompt</button>
-                        <button onclick="importPrompts()">📥 Importer</button>
-                        <button onclick="exportPrompts()">📤 Exporter</button>
-                    </div>
-                </div>
-                <div style="display: flex; flex: 1; overflow: hidden;">
-                    <div style="width: 250px; background: hsl(222, 84%, 8%); border-right: 1px solid hsl(217, 19%, 20%); overflow-y: auto;">
-                        <div style="padding: 16px;">
-                            <h4>Catégories</h4>
-                            <div id="prompt-categories">
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">Développement (3)</div>
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">Serveur (2)</div>
-                                <div style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">Base de données (1)</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex: 1; padding: 20px; overflow: auto;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;" id="prompts-grid">
-                            <div style="background: hsl(222, 84%, 8%); padding: 16px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%); cursor: pointer;">
-                                <h4 style="color: hsl(188, 95%, 42%); margin-bottom: 8px;">Créer Structure PHP</h4>
-                                <p style="color: hsl(217, 10%, 58%); font-size: 0.9rem; margin-bottom: 12px;">Génère une structure de projet PHP complète</p>
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.8rem; color: hsl(217, 10%, 58%);">Utilisé 5 fois</span>
-                                    <div>
-                                        <button style="background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer;">▶️</button>
-                                        <button style="background: none; border: none; color: hsl(210, 40%, 95%); cursor: pointer; margin-left: 8px;">✏️</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Configuration -->
-        <div id="config" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>⚙️ Configuration</h2>
-                    <div>
-                        <button onclick="saveAllSettings()">💾 Sauvegarder Tout</button>
-                        <button onclick="resetToDefaults()">🔄 Réinitialiser</button>
-                    </div>
-                </div>
-                <div style="display: flex; flex: 1; overflow: hidden;">
-                    <div style="width: 250px; background: hsl(222, 84%, 8%); border-right: 1px solid hsl(217, 19%, 20%); overflow-y: auto;">
-                        <div style="padding: 16px;">
-                            <h4>Sections</h4>
-                            <div id="config-sections">
-                                <div class="config-section-btn active" data-section="general" style="padding: 8px; margin: 4px 0; background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); border-radius: 4px; cursor: pointer;">🎯 Général</div>
-                                <div class="config-section-btn" data-section="appearance" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🎨 Apparence</div>
-                                <div class="config-section-btn" data-section="editor" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">📝 Éditeur</div>
-                                <div class="config-section-btn" data-section="server" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🖥️ Serveur</div>
-                                <div class="config-section-btn" data-section="security" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🔒 Sécurité</div>
-                                <div class="config-section-btn" data-section="performance" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">⚡ Performance</div>
-                                <div class="config-section-btn" data-section="backup" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">💾 Sauvegarde</div>
-                                <div class="config-section-btn" data-section="advanced" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🔧 Avancé</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex: 1; padding: 20px; overflow: auto;">
-                        <div id="config-content">
-                            <!-- Section Général -->
-                            <div id="config-general" class="config-section">
-                                <h3 style="color: hsl(188, 95%, 42%); margin-bottom: 20px;">🎯 Configuration Générale</h3>
-                                <div style="display: grid; gap: 16px;">
-                                    <div>
-                                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Nom de l'application</label>
-                                        <input type="text" value="SGC-AgentOne" style="width: 100%; padding: 8px 12px; background: hsl(222, 84%, 8%); border: 1px solid hsl(217, 19%, 20%); border-radius: 6px; color: hsl(210, 40%, 95%); outline: none;">
-                                    </div>
-                                    <div>
-                                        <label style="display: block; margin-bottom: 6px; font-weight: 500;">Langue</label>
-                                        <select style="width: 100%; padding: 8px 12px; background: hsl(222, 84%, 8%); border: 1px solid hsl(217, 19%, 20%); border-radius: 6px; color: hsl(210, 40%, 95%); outline: none;">
-                                            <option value="fr">Français</option>
-                                            <option value="en">English</option>
-                                            <option value="es">Español</option>
-                                        </select>
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                                        <input type="checkbox" id="auto-save" checked>
-                                        <label for="auto-save">Sauvegarde automatique</label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vue Aide -->
-        <div id="help" class="view">
-            <div class="view-container">
-                <div class="view-header">
-                    <h2>❓ Centre d'Aide</h2>
-                    <div>
-                        <input type="text" placeholder="Rechercher..." style="padding: 6px 12px; background: hsl(222, 84%, 8%); border: 1px solid hsl(217, 19%, 20%); border-radius: 6px; color: hsl(210, 40%, 95%); outline: none;">
-                    </div>
-                </div>
-                <div style="display: flex; flex: 1; overflow: hidden;">
-                    <div style="width: 250px; background: hsl(222, 84%, 8%); border-right: 1px solid hsl(217, 19%, 20%); overflow-y: auto;">
-                        <div style="padding: 16px;">
-                            <h4>Sections</h4>
-                            <div id="help-sections">
-                                <div class="help-section-btn active" data-section="getting-started" style="padding: 8px; margin: 4px 0; background: hsl(188, 95%, 42%); color: hsl(222, 84%, 5%); border-radius: 4px; cursor: pointer;">🚀 Démarrage</div>
-                                <div class="help-section-btn" data-section="commands" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">💬 Commandes</div>
-                                <div class="help-section-btn" data-section="features" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">✨ Fonctionnalités</div>
-                                <div class="help-section-btn" data-section="troubleshooting" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🔧 Dépannage</div>
-                                <div class="help-section-btn" data-section="api" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">🔌 API</div>
-                                <div class="help-section-btn" data-section="examples" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">📚 Exemples</div>
-                                <div class="help-section-btn" data-section="faq" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">❓ FAQ</div>
-                                <div class="help-section-btn" data-section="about" style="padding: 8px; margin: 4px 0; background: hsl(215, 16%, 25%); border-radius: 4px; cursor: pointer;">ℹ️ À propos</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex: 1; padding: 20px; overflow: auto;">
-                        <div id="help-content">
-                            <div id="help-getting-started" class="help-section">
-                                <h3 style="color: hsl(188, 95%, 42%); margin-bottom: 20px;">🚀 Guide de Démarrage</h3>
-                                <div style="background: hsl(222, 84%, 8%); padding: 20px; border-radius: 8px; border: 1px solid hsl(217, 19%, 20%); margin-bottom: 16px;">
-                                    <h4 style="margin-bottom: 12px;">Bienvenue dans SGC-AgentOne !</h4>
-                                    <p style="line-height: 1.6; margin-bottom: 12px;">SGC-AgentOne est un assistant universel qui vous permet de gérer vos projets, fichiers, et développement directement depuis votre navigateur.</p>
-                                    <h5 style="margin: 16px 0 8px 0; color: hsl(188, 95%, 42%);">Première utilisation :</h5>
-                                    <ol style="padding-left: 20px; line-height: 1.6;">
-                                        <li>Explorez les différentes vues via le menu de navigation</li>
-                                        <li>Utilisez le Chat pour interagir avec l'assistant</li>
-                                        <li>Gérez vos fichiers via l'Explorateur</li>
-                                        <li>Configurez l'application dans les Paramètres</li>
-                                    </ol>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 } else {
                     showSettingsStatus(`❌ ${result.error}`, 'error');
                 }
             } catch (error) {
                 showSettingsStatus(`🔌 Erreur de sauvegarde: ${error.message}`, 'error');
             }
-        <span>SGC-AgentOne v2.1 • Serveur: <span id="footer-server-status">🔴 Arrêté</span> • Projet: <span id="current-project">Aucun</span></span>
+        }
         
         function exportSettings() {
             loadAllSettings().then(() => {
                 const settings = {
-        }
-        
-        // Variables globales
-        let token = localStorage.getItem('auth_token') || '';
-        let terminalHistory = [];
-        let terminalHistoryIndex = -1;
-        
-        // Charger le token au démarrage
-        fetch('/api/auth', { method: 'POST' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.token) {
-                    token = data.token;
-                    localStorage.setItem('auth_token', token);
-                }
-            })
-            .catch(() => {});
-        
-        // Navigation entre les vues
-        function showView(viewName) {
-            document.querySelectorAll('.view').forEach(view => {
-                view.classList.remove('active');
-            });
-            document.querySelectorAll('#nav-menu button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            document.getElementById(viewName).classList.add('active');
-            document.querySelector(`[data-view="${viewName}"]`).classList.add('active');
-            
-            localStorage.setItem('lastView', viewName);
-        }
-        
-        // Gestion des clics sur la navigation
-        document.querySelectorAll('#nav-menu button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                showView(btn.dataset.view);
-            });
-        });
-        
-        // Charger la dernière vue
-        const lastView = localStorage.getItem('lastView') || 'chat';
-        showView(lastView);
-        
-        // === FONCTIONS CHAT ===
-        const messagesContainer = document.getElementById('messages');
-        const inputField = document.getElementById('input');
-        const sendButton = document.getElementById('send');
-        
-        function appendMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            messageDiv.textContent = text;
-            messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-        
-        async function sendMessage() {
-            const text = inputField.value.trim();
-            if (!text) return;
-            
-            appendMessage(text, 'user');
-            inputField.value = '';
-            
-            sendButton.disabled = true;
-            sendButton.textContent = 'Envoi...';
-            
-            try {
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
-                });
-                const result = await response.json();
+                    title: document.getElementById('app-title').value,
+                    author: document.getElementById('app-author').value,
+                    theme: document.getElementById('theme-mode').value,
+                    // ... autres paramètres
+                };
                 
-                if (result.error) {
-                    appendMessage('❌ ' + result.error, 'ai');
-                } else if (result.success && result.result) {
-                    appendMessage(result.result, 'ai');
-                } else {
-                    appendMessage('🤖 Réponse inattendue du serveur.', 'ai');
-                }
-            } catch (error) {
-                appendMessage('🔌 Erreur de connexion au serveur.', 'ai');
-            } finally {
-                sendButton.disabled = false;
-                sendButton.textContent = 'Envoyer';
-            }
+                const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sgc-settings-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showSettingsStatus('📤 Paramètres exportés', 'success');
+            });
         }
         
-        sendButton.addEventListener('click', sendMessage);
-        inputField.addEventListener('keypress', e => {
-            if (e.key === 'Enter') sendMessage();
-        });
-        
-        // === FONCTIONS FICHIERS ===
-        function createNewFile() {
-            const filename = prompt('Nom du fichier :');
-            if (filename) {
-                appendMessage(`createFile ${filename} : // Nouveau fichier`, 'user');
-                sendMessage();
-            }
-        }
-        
-        function createNewFolder() {
-            const foldername = prompt('Nom du dossier :');
-            if (foldername) {
-                appendMessage(`createDir ${foldername}`, 'user');
-                sendMessage();
-            }
-        }
-        
-        // === FONCTIONS ÉDITEUR ===
-        function saveCurrentFile() {
-            const content = document.getElementById('code-editor').value;
-            if (content.trim()) {
-                alert('Fichier sauvegardé !');
-            }
-        }
-        
-        function openFile() {
+        function importSettings() {
             const input = document.createElement('input');
             input.type = 'file';
+            input.accept = '.json';
             input.onchange = (e) => {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = (e) => {
-                        document.getElementById('code-editor').value = e.target.result;
-                        document.getElementById('open-files-list').innerHTML = `<div style="padding: 8px; background: hsl(215, 16%, 25%); border-radius: 4px; margin-bottom: 4px;">${file.name}</div>`;
+                    reader.onload = (event) => {
+                        try {
+                            const settings = JSON.parse(event.target.result);
+                            
+                            // Appliquer les paramètres importés
+                            Object.entries(settings).forEach(([key, value]) => {
+                                const element = document.getElementById(key.replace(/_/g, '-'));
+                                if (element) {
+                                    if (element.type === 'checkbox') {
+                                        element.checked = value;
+                                    } else {
+                                        element.value = value;
+                                    }
+                                }
+                            });
+                            
+                            showSettingsStatus('📥 Paramètres importés avec succès', 'success');
+                        } catch (error) {
+                            showSettingsStatus('❌ Fichier de paramètres invalide', 'error');
+                        }
                     };
                     reader.readAsText(file);
                 }
@@ -2803,254 +2597,106 @@ console.log(result.result);</pre>
             input.click();
         }
         
-        // === FONCTIONS TERMINAL ===
-        const terminalOutput = document.getElementById('terminal-output');
-        const terminalInput = document.getElementById('terminal-input');
-        
-        function addTerminalLine(text, type = 'output') {
-            const line = document.createElement('div');
-            if (type === 'command') {
-                line.innerHTML = `<span style="color: hsl(188, 95%, 42%);">sgc@localhost:~$</span> ${text}`;
-            } else if (type === 'error') {
-                line.style.color = 'hsl(310, 100%, 75%)';
-                line.textContent = text;
-            } else {
-                line.textContent = text;
+        function resetAllSettings() {
+            if (confirm('🔄 Réinitialiser tous les paramètres aux valeurs par défaut ?')) {
+                // Réinitialiser tous les champs
+                document.getElementById('app-title').value = 'SGC-AgentOne';
+                document.getElementById('app-author').value = 'By AMICHI Amine';
+                document.getElementById('theme-mode').value = 'dark';
+                // ... autres réinitialisations
+                
+                showSettingsStatus('🔄 Paramètres réinitialisés', 'success');
             }
-            terminalOutput.appendChild(line);
-            terminalOutput.scrollTop = terminalOutput.scrollHeight;
         }
         
-        function executeTerminalCommand(command) {
-            addTerminalLine(command, 'command');
+        function showSettingsStatus(message, type) {
+            const statusDiv = document.getElementById('settings-status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
             
-            switch (command.toLowerCase().trim()) {
-                case 'help':
-                    addTerminalLine('Commandes disponibles:');
-                    addTerminalLine('  ls        - Lister les fichiers');
-                    addTerminalLine('  pwd       - Afficher le répertoire courant');
-                    addTerminalLine('  status    - Statut du serveur');
-                    addTerminalLine('  clear     - Effacer l\'écran');
-                    addTerminalLine('  help      - Afficher cette aide');
-                    break;
-                case 'ls':
-                    addTerminalLine('index.php  core/  extensions/  api/');
-                    break;
-                case 'pwd':
-                    addTerminalLine('/home/sgc-agentone');
-                    break;
-                case 'status':
-                    addTerminalLine('SGC-AgentOne v2.1 - Status: Running');
-                    addTerminalLine('Port: 5000');
-                    addTerminalLine('Uptime: 00:15:32');
-                    break;
-                case 'clear':
-                    clearTerminal();
-                    return;
-                default:
-                    addTerminalLine(`Commande non reconnue: ${command}`, 'error');
-                    addTerminalLine('Tapez "help" pour voir les commandes disponibles');
-            }
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // === HELP FUNCTIONALITY ===
+        function switchHelpTab(tab) {
+            currentHelpTab = tab;
             
-            addTerminalLine('');
-        }
-        
-        function clearTerminal() {
-            terminalOutput.innerHTML = `
-                <div style="color: hsl(113, 54%, 73%);">SGC-AgentOne Terminal v2.1</div>
-                <div style="color: hsl(217, 10%, 58%);">Tapez 'help' pour voir les commandes disponibles</div>
-                <div style="margin-top: 8px;"><span style="color: hsl(188, 95%, 42%);">sgc@localhost:~$</span> <span id="terminal-cursor">_</span></div>
-            `;
-        }
-        
-        function showTerminalHelp() {
-            executeTerminalCommand('help');
-        }
-        
-        terminalInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const command = terminalInput.value.trim();
-                if (command) {
-                    terminalHistory.push(command);
-                    terminalHistoryIndex = terminalHistory.length;
-                    executeTerminalCommand(command);
-                }
-                terminalInput.value = '';
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (terminalHistoryIndex > 0) {
-                    terminalHistoryIndex--;
-                    terminalInput.value = terminalHistory[terminalHistoryIndex];
-                }
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (terminalHistoryIndex < terminalHistory.length - 1) {
-                    terminalHistoryIndex++;
-                    terminalInput.value = terminalHistory[terminalHistoryIndex];
-                } else {
-                    terminalHistoryIndex = terminalHistory.length;
-                    terminalInput.value = '';
-                }
-            }
-        });
-        
-        // === FONCTIONS SERVEUR ===
-        function updateServerStatus() {
-            // Simulation du statut serveur
-            const isRunning = Math.random() > 0.3;
-            const statusElement = document.getElementById('server-status');
-            const footerStatusElement = document.getElementById('footer-server-status');
+            // Mettre à jour les onglets
+            document.querySelectorAll('#help .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
             
-            if (isRunning) {
-                statusElement.innerHTML = '🟢 En marche';
-                footerStatusElement.innerHTML = '🟢 En marche';
-            } else {
-                statusElement.innerHTML = '🔴 Arrêté';
-                footerStatusElement.innerHTML = '🔴 Arrêté';
-            }
+            // Mettre à jour les vues
+            document.querySelectorAll('.help-tab').forEach(t => t.classList.add('hidden'));
+            document.getElementById(`help-${tab}`).classList.remove('hidden');
         }
         
-        // === FONCTIONS NAVIGATEUR ===
-        function browserBack() {
-            document.getElementById('browser-frame').contentWindow.history.back();
-        }
-        
-        function browserForward() {
-            document.getElementById('browser-frame').contentWindow.history.forward();
-        }
-        
-        function browserRefresh() {
-            document.getElementById('browser-frame').contentWindow.location.reload();
-        }
-        
-        function browserGo() {
-            const url = document.getElementById('browser-url').value;
-            document.getElementById('browser-frame').src = url;
-        }
-        
-        // === FONCTIONS BASE DE DONNÉES ===
-        function executeQuery() {
-            const query = document.getElementById('sql-editor').value;
-            const resultsDiv = document.getElementById('query-results');
+        // === UTILITY FUNCTIONS ===
+        function showStatus(message, type = 'success') {
+            const statusEl = document.getElementById('connection-status');
+            const originalText = statusEl.textContent;
             
-            if (query.trim()) {
-                resultsDiv.innerHTML = `
-                    <div style="color: hsl(113, 54%, 73%); margin-bottom: 8px;">✅ Requête exécutée avec succès</div>
-                    <div style="color: hsl(217, 10%, 58%);">Résultats simulés pour: ${query.substring(0, 50)}...</div>
-                `;
-            }
+            statusEl.textContent = message;
+            statusEl.style.color = type === 'success' ? 'var(--success)' : 
+                                  type === 'error' ? 'var(--error)' : 
+                                  type === 'warning' ? 'var(--warning)' : 'var(--accent)';
+            
+            setTimeout(() => {
+                statusEl.textContent = originalText;
+                statusEl.style.color = '';
+            }, 3000);
         }
         
-        function formatQuery() {
-            const editor = document.getElementById('sql-editor');
-            // Formatage basique SQL
-            let query = editor.value;
-            query = query.replace(/select/gi, 'SELECT');
-            query = query.replace(/from/gi, 'FROM');
-            query = query.replace(/where/gi, 'WHERE');
-            query = query.replace(/order by/gi, 'ORDER BY');
-            editor.value = query;
-        }
-        
-        function saveQuery() {
-            const query = document.getElementById('sql-editor').value;
-            if (query.trim()) {
-                alert('Requête sauvegardée !');
-            }
-        }
-        
-        // === FONCTIONS PROJETS ===
-        function createNewProject() {
-            const name = prompt('Nom du projet :');
-            if (name) {
-                alert(`Projet "${name}" créé !`);
-            }
-        }
-        
-        function importProject() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.zip';
-            input.onchange = () => {
-                alert('Projet importé !');
-            };
-            input.click();
-        }
-        
-        function exportProjects() {
-            alert('Projets exportés !');
-        }
-        
-        // === FONCTIONS PROMPTS ===
-        function createNewPrompt() {
-            const name = prompt('Nom du prompt :');
-            if (name) {
-                alert(`Prompt "${name}" créé !`);
-            }
-        }
-        
-        function importPrompts() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.json';
-            input.onchange = () => {
-                alert('Prompts importés !');
-            };
-            input.click();
-        }
-        
-        function exportPrompts() {
-            alert('Prompts exportés !');
-        }
-        
-        // === FONCTIONS CONFIGURATION ===
-        function saveAllSettings() {
-            alert('Tous les paramètres sauvegardés !');
-        }
-        
-        function resetToDefaults() {
-            if (confirm('Réinitialiser tous les paramètres ?')) {
-                alert('Paramètres réinitialisés !');
-            }
-        }
-        
-        // Navigation des sections de configuration
-        document.querySelectorAll('.config-section-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.config-section-btn').forEach(b => {
-                    b.style.background = 'hsl(215, 16%, 25%)';
-                    b.style.color = 'hsl(210, 40%, 95%)';
-                });
-                btn.style.background = 'hsl(188, 95%, 42%)';
-                btn.style.color = 'hsl(222, 84%, 5%)';
-            });
-        });
-        
-        // Navigation des sections d'aide
-        document.querySelectorAll('.help-section-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.help-section-btn').forEach(b => {
-                    b.style.background = 'hsl(215, 16%, 25%)';
-                    b.style.color = 'hsl(210, 40%, 95%)';
-                });
-                btn.style.background = 'hsl(188, 95%, 42%)';
-                btn.style.color = 'hsl(222, 84%, 5%)';
-            });
-        });
-        
-        // === MISE À JOUR TEMPS RÉEL ===
-        function updateTimestamp() {
+        // Mise à jour de l'heure
+        function updateTime() {
             const now = new Date();
-            document.getElementById('timestamp').textContent = now.toISOString().replace('T', ' ').substring(0, 19);
+            document.getElementById('current-time').textContent = now.toLocaleString();
         }
         
-        // Mise à jour automatique
-        setInterval(updateTimestamp, 1000);
-        setInterval(updateServerStatus, 5000);
+        // Événements globaux
+        document.getElementById('terminal-input').addEventListener('keypress', e => {
+            if (e.key === 'Enter') runTerminalCommand();
+        });
+        
+        document.getElementById('font-size').addEventListener('input', e => {
+            document.getElementById('font-size-value').textContent = e.target.value + 'px';
+        });
         
         // Initialisation
-        updateTimestamp();
-        updateServerStatus();
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAllSettings();
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            // Vérifier la connexion périodiquement
+            setInterval(() => {
+                fetch('?action=chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: 'serverStatus' })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    const statusEl = document.getElementById('connection-status');
+                    if (result.success) {
+                        statusEl.textContent = '🟢 Connecté';
+                        statusEl.style.color = 'var(--success)';
+                    } else {
+                        statusEl.textContent = '🔴 Déconnecté';
+                        statusEl.style.color = 'var(--error)';
+                    }
+                })
+                .catch(() => {
+                    const statusEl = document.getElementById('connection-status');
+                    statusEl.textContent = '🔴 Déconnecté';
+                    statusEl.style.color = 'var(--error)';
+                });
+            }, 10000);
+        });
+        
+        console.log('🚀 SGC-AgentOne v2.1 initialisé avec succès');
     </script>
 </body>
 </html>

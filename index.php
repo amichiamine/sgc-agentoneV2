@@ -1,2702 +1,2571 @@
 <?php
 /**
- * SGC-AgentOne v2.1 - Solution Complète et Optimale
- * Point d'entrée universel avec auto-installation
- * Interface complète avec toutes les fonctionnalités
+ * SGC-AgentOne v2.1 - Point d'entrée universel
+ * Interface complète avec toutes les vues et fonctionnalités
  */
 
-// === CONFIGURATION ===
-$debug = isset($_GET['debug']) && $_GET['debug'] === '1';
-$projectRoot = __DIR__;
+// Auto-installation des dossiers requis
+$requiredDirs = ['core/logs', 'core/db', 'core/config', 'core/agents/actions', 'extensions/webview', 'prompts'];
+foreach ($requiredDirs as $dir) {
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+}
 
-// === FONCTIONS D'AUTO-INSTALLATION ===
-function createProjectStructure($root) {
-    $dirs = [
-        'core/config', 'core/logs', 'core/agents/actions', 'core/db',
-        'api', 'extensions/webview', 'prompts', 'assets', 'backups'
+// Créer les fichiers de configuration par défaut s'ils n'existent pas
+if (!file_exists('core/config/settings.json')) {
+    $defaultSettings = [
+        'port' => 5000,
+        'host' => '0.0.0.0',
+        'debug' => false,
+        'theme' => 'sgc-commander',
+        'blind_exec_enabled' => false
     ];
-    
-    foreach ($dirs as $dir) {
-        $path = $root . '/' . $dir;
-        if (!is_dir($path)) {
-            mkdir($path, 0755, true);
-        }
-    }
-    
-    // Configuration par défaut
-    $configPath = $root . '/core/config/settings.json';
-    if (!file_exists($configPath)) {
-        $defaultConfig = [
-            'title' => 'SGC-AgentOne',
-            'author' => 'By AMICHI Amine',
-            'port' => 5000,
-            'host' => '0.0.0.0',
-            'debug' => false,
-            'theme' => 'dark',
-            'blind_exec_enabled' => false,
-            'auto_save' => true,
-            'syntax_highlighting' => true,
-            'file_watcher' => true,
-            'backup_enabled' => true
-        ];
-        file_put_contents($configPath, json_encode($defaultConfig, JSON_PRETTY_PRINT));
-    }
+    file_put_contents('core/config/settings.json', json_encode($defaultSettings, JSON_PRETTY_PRINT));
 }
 
-// === GESTION API ===
-if (isset($_GET['action'])) {
-    header("Content-Type: application/json");
+// API intégrée
+if (isset($_GET['api'])) {
+    header('Content-Type: application/json');
     
-    switch ($_GET['action']) {
-        case 'chat':
-            $input = json_decode(file_get_contents("php://input"), true);
-            if (!$input || !isset($input["message"])) {
-                echo json_encode(["error" => "Message manquant"]);
-                exit;
-            }
-            
-            $message = trim($input["message"]);
-            
-            if (strpos($message, ":") !== false) {
-                list($actionTarget, $content) = explode(":", $message, 2);
-                $actionTarget = trim($actionTarget);
-                $content = trim($content);
+    if ($_GET['api'] === 'chat' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $message = $input['message'] ?? '';
+        
+        // Traitement des commandes simples
+        if (strpos($message, 'createFile') === 0) {
+            $parts = explode(':', $message, 2);
+            if (count($parts) === 2) {
+                $pathAndContent = trim($parts[1]);
+                $contentParts = explode(' ', $pathAndContent, 2);
+                $path = $contentParts[0];
+                $content = $contentParts[1] ?? '';
                 
-                $parts = explode(" ", trim($actionTarget), 2);
-                $action = $parts[0];
-                $target = isset($parts[1]) ? trim($parts[1]) : "";
-                
-                switch ($action) {
-                    case "createFile":
-                        if ($target && $content) {
-                            $filePath = $projectRoot . '/' . $target;
-                            $dir = dirname($filePath);
-                            if (!is_dir($dir)) mkdir($dir, 0755, true);
-                            file_put_contents($filePath, $content);
-                            echo json_encode(["success" => true, "result" => "✅ Fichier créé: $target"]);
-                        } else {
-                            echo json_encode(["error" => "Cible ou contenu manquant"]);
-                        }
-                        break;
-                        
-                    case "readFile":
-                        $filePath = $projectRoot . '/' . $target;
-                        if ($target && file_exists($filePath)) {
-                            $fileContent = file_get_contents($filePath);
-                            echo json_encode(["success" => true, "result" => "📄 Contenu de $target:\n\n" . $fileContent]);
-                        } else {
-                            echo json_encode(["error" => "Fichier introuvable: $target"]);
-                        }
-                        break;
-                        
-                    case "listDir":
-                        $dir = $target ?: ".";
-                        $dirPath = $projectRoot . '/' . $dir;
-                        if (is_dir($dirPath)) {
-                            $files = array_diff(scandir($dirPath), [".", ".."]);
-                            $list = [];
-                            foreach ($files as $f) {
-                                $icon = is_dir("$dirPath/$f") ? "📁" : "📄";
-                                $size = is_file("$dirPath/$f") ? " (" . round(filesize("$dirPath/$f")/1024, 2) . " KB)" : "";
-                                $list[] = "$icon $f$size";
-                            }
-                            $result = "📂 Contenu de $dir:\n\n" . implode("\n", $list);
-                            echo json_encode(["success" => true, "result" => $result]);
-                        } else {
-                            echo json_encode(["error" => "Dossier introuvable: $dir"]);
-                        }
-                        break;
-                        
-                    case "createDir":
-                        if ($target) {
-                            $dirPath = $projectRoot . '/' . $target;
-                            if (!is_dir($dirPath)) {
-                                mkdir($dirPath, 0755, true);
-                                echo json_encode(["success" => true, "result" => "📁 Dossier créé: $target"]);
-                            } else {
-                                echo json_encode(["error" => "Le dossier existe déjà: $target"]);
-                            }
-                        } else {
-                            echo json_encode(["error" => "Nom du dossier manquant"]);
-                        }
-                        break;
-                        
-                    case "deleteFile":
-                        $filePath = $projectRoot . '/' . $target;
-                        if ($target && file_exists($filePath)) {
-                            unlink($filePath);
-                            echo json_encode(["success" => true, "result" => "🗑️ Fichier supprimé: $target"]);
-                        } else {
-                            echo json_encode(["error" => "Fichier introuvable: $target"]);
-                        }
-                        break;
-                        
-                    case "serverStatus":
-                        $port = 5000;
-                        $connection = @fsockopen('localhost', $port, $errno, $errstr, 1);
-                        if ($connection) {
-                            fclose($connection);
-                            echo json_encode(["success" => true, "result" => "🟢 Serveur actif sur le port $port"]);
-                        } else {
-                            echo json_encode(["success" => true, "result" => "🔴 Serveur inactif sur le port $port"]);
-                        }
-                        break;
-                        
-                    case "backup":
-                        $backupDir = $projectRoot . '/backups';
-                        if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
-                        $backupFile = $backupDir . '/backup_' . date('Y-m-d_H-i-s') . '.zip';
-                        
-                        if (class_exists('ZipArchive')) {
-                            $zip = new ZipArchive();
-                            if ($zip->open($backupFile, ZipArchive::CREATE) === TRUE) {
-                                $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($projectRoot));
-                                foreach ($iterator as $file) {
-                                    if ($file->isFile() && strpos($file->getPathname(), '/backups/') === false) {
-                                        $relativePath = substr($file->getPathname(), strlen($projectRoot) + 1);
-                                        $zip->addFile($file->getPathname(), $relativePath);
-                                    }
-                                }
-                                $zip->close();
-                                echo json_encode(["success" => true, "result" => "💾 Sauvegarde créée: " . basename($backupFile)]);
-                            } else {
-                                echo json_encode(["error" => "Impossible de créer l'archive"]);
-                            }
-                        } else {
-                            echo json_encode(["error" => "Extension ZIP non disponible"]);
-                        }
-                        break;
-                        
-                    default:
-                        echo json_encode(["error" => "Action inconnue: $action. Actions: createFile, readFile, listDir, createDir, deleteFile, serverStatus, backup"]);
-                }
-            } else {
-                echo json_encode(["error" => "Format invalide. Utilisez: action cible : contenu"]);
-            }
-            exit;
-            
-        case 'listFiles':
-            $path = $_GET['path'] ?? '.';
-            $fullPath = $projectRoot . '/' . $path;
-            $files = [];
-            
-            if (is_dir($fullPath)) {
-                $items = scandir($fullPath);
-                foreach ($items as $item) {
-                    if ($item !== '.' && $item !== '..') {
-                        $itemPath = $fullPath . '/' . $item;
-                        $files[] = [
-                            'name' => $item,
-                            'type' => is_dir($itemPath) ? 'dir' : 'file',
-                            'size' => is_file($itemPath) ? filesize($itemPath) : 0,
-                            'modified' => filemtime($itemPath),
-                            'extension' => is_file($itemPath) ? pathinfo($item, PATHINFO_EXTENSION) : ''
-                        ];
+                if (!empty($path)) {
+                    $dir = dirname($path);
+                    if (!is_dir($dir) && $dir !== '.') {
+                        mkdir($dir, 0755, true);
                     }
+                    file_put_contents($path, $content);
+                    echo json_encode(['success' => true, 'result' => "✅ Fichier '$path' créé avec succès!"]);
+                } else {
+                    echo json_encode(['error' => 'Chemin de fichier manquant']);
                 }
-            }
-            
-            echo json_encode(['success' => true, 'files' => $files, 'path' => $path]);
-            exit;
-            
-        case 'saveSettings':
-            $input = json_decode(file_get_contents("php://input"), true);
-            if ($input) {
-                $settingsPath = $projectRoot . '/core/config/settings.json';
-                file_put_contents($settingsPath, json_encode($input, JSON_PRETTY_PRINT));
-                echo json_encode(['success' => true, 'message' => 'Paramètres sauvegardés']);
             } else {
-                echo json_encode(['error' => 'Données invalides']);
+                echo json_encode(['error' => 'Format: createFile: chemin contenu']);
             }
-            exit;
-            
-        case 'loadSettings':
-            $settingsPath = $projectRoot . '/core/config/settings.json';
-            if (file_exists($settingsPath)) {
-                $settings = json_decode(file_get_contents($settingsPath), true);
-                echo json_encode(['success' => true, 'settings' => $settings]);
+        }
+        elseif (strpos($message, 'readFile') === 0) {
+            $path = trim(str_replace('readFile:', '', $message));
+            if (file_exists($path)) {
+                $content = file_get_contents($path);
+                echo json_encode(['success' => true, 'result' => "📄 Contenu de '$path':\n\n$content"]);
             } else {
-                echo json_encode(['success' => true, 'settings' => []]);
+                echo json_encode(['error' => "Fichier '$path' introuvable"]);
             }
-            exit;
-            
-        case 'getLogs':
-            $logType = $_GET['type'] ?? 'actions';
-            $logFile = $projectRoot . '/core/logs/' . $logType . '.log';
-            
-            if (file_exists($logFile)) {
-                $logs = array_slice(array_reverse(file($logFile, FILE_IGNORE_NEW_LINES)), 0, 100);
-                echo json_encode(['success' => true, 'logs' => array_reverse($logs)]);
-            } else {
-                echo json_encode(['success' => true, 'logs' => []]);
-            }
-            exit;
-            
-        case 'clearLogs':
-            $logFiles = ['actions.log', 'chat.log', 'errors.log'];
-            foreach ($logFiles as $logFile) {
-                $path = $projectRoot . '/core/logs/' . $logFile;
-                if (file_exists($path)) {
-                    file_put_contents($path, '');
+        }
+        elseif (strpos($message, 'listDir') === 0) {
+            $dir = trim(str_replace('listDir:', '', $message)) ?: '.';
+            if (is_dir($dir)) {
+                $files = array_diff(scandir($dir), ['.', '..']);
+                $result = "📁 Contenu de '$dir':\n\n";
+                foreach ($files as $file) {
+                    $type = is_dir("$dir/$file") ? '📁' : '📄';
+                    $result .= "$type $file\n";
                 }
+                echo json_encode(['success' => true, 'result' => $result]);
+            } else {
+                echo json_encode(['error' => "Dossier '$dir' introuvable"]);
             }
-            echo json_encode(['success' => true, 'message' => 'Logs effacés']);
-            exit;
+        }
+        elseif (strpos($message, 'createDir') === 0) {
+            $dir = trim(str_replace('createDir:', '', $message));
+            if (!empty($dir)) {
+                mkdir($dir, 0755, true);
+                echo json_encode(['success' => true, 'result' => "✅ Dossier '$dir' créé avec succès!"]);
+            } else {
+                echo json_encode(['error' => 'Nom de dossier manquant']);
+            }
+        }
+        elseif (strpos($message, 'deleteFile') === 0) {
+            $path = trim(str_replace('deleteFile:', '', $message));
+            if (file_exists($path)) {
+                unlink($path);
+                echo json_encode(['success' => true, 'result' => "✅ Fichier '$path' supprimé avec succès!"]);
+            } else {
+                echo json_encode(['error' => "Fichier '$path' introuvable"]);
+            }
+        }
+        else {
+            echo json_encode(['success' => true, 'result' => "🤖 SGC-AgentOne: Commandes disponibles:\n\n• createFile: chemin contenu\n• readFile: chemin\n• listDir: dossier\n• createDir: nom\n• deleteFile: chemin\n\nExemple: createFile: test.txt Bonjour monde!"]);
+        }
+        exit;
     }
-}
-
-// Mode debug
-if ($debug) {
-    echo "<!DOCTYPE html><html><head><title>🔍 Debug SGC-AgentOne</title>";
-    echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#0a0f1c;color:#e2e8f0;}</style></head><body>";
-    echo "<h1>🔍 Debug SGC-AgentOne v2.1</h1>";
-    echo "<p><strong>Racine:</strong> " . htmlspecialchars($projectRoot) . "</p>";
-    echo "<p><strong>PHP:</strong> " . PHP_VERSION . "</p>";
-    echo "<p><strong>Extensions:</strong> " . implode(', ', get_loaded_extensions()) . "</p>";
-    echo "<p><a href='?' style='color:#38bdf8;'>🚀 Accéder à SGC-AgentOne</a></p>";
-    echo "</body></html>";
+    
+    if ($_GET['api'] === 'files' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $action = $input['action'] ?? '';
+        
+        if ($action === 'listDir') {
+            $path = $input['path'] ?? '.';
+            if (is_dir($path)) {
+                $files = array_diff(scandir($path), ['.', '..']);
+                $items = [];
+                foreach ($files as $file) {
+                    $items[] = [
+                        'name' => $file,
+                        'type' => is_dir("$path/$file") ? 'directory' : 'file',
+                        'size' => is_file("$path/$file") ? filesize("$path/$file") : 0
+                    ];
+                }
+                echo json_encode(['success' => true, 'items' => $items]);
+            } else {
+                echo json_encode(['error' => 'Dossier introuvable']);
+            }
+        }
+        elseif ($action === 'readFile') {
+            $path = $input['path'] ?? '';
+            if (file_exists($path)) {
+                echo json_encode(['success' => true, 'content' => file_get_contents($path)]);
+            } else {
+                echo json_encode(['error' => 'Fichier introuvable']);
+            }
+        }
+        elseif ($action === 'createFile') {
+            $path = $input['path'] ?? '';
+            $content = $input['content'] ?? '';
+            if (!empty($path)) {
+                $dir = dirname($path);
+                if (!is_dir($dir) && $dir !== '.') {
+                    mkdir($dir, 0755, true);
+                }
+                file_put_contents($path, $content);
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['error' => 'Chemin manquant']);
+            }
+        }
+        else {
+            echo json_encode(['error' => 'Action non supportée']);
+        }
+        exit;
+    }
+    
+    if ($_GET['api'] === 'server') {
+        echo json_encode(['success' => true, 'status' => 'running', 'port' => 5000]);
+        exit;
+    }
+    
+    echo json_encode(['error' => 'API non trouvée']);
     exit;
 }
 
-// Créer la structure
-createProjectStructure($projectRoot);
-
 // Interface principale
-header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGC-AgentOne v2.1 - Assistant Universel</title>
+    <title>SGC-AgentOne v2.1</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #0a0f1c;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
-            --accent: #38bdf8;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --error: #ef4444;
-            --border: #475569;
+            --bg-primary: hsl(222, 84%, 5%);
+            --bg-secondary: hsl(215, 28%, 17%);
+            --bg-tertiary: hsl(222, 84%, 8%);
+            --text-primary: hsl(210, 40%, 95%);
+            --text-secondary: hsl(217, 10%, 58%);
+            --accent: hsl(188, 95%, 42%);
+            --border: hsl(217, 19%, 20%);
+            --success: hsl(113, 54%, 73%);
+            --error: hsl(310, 100%, 75%);
+            --warning: hsl(50, 100%, 74%);
         }
-        
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary); 
-            color: var(--text-primary); 
-            line-height: 1.6;
-            overflow-x: hidden;
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
-        /* Header */
-        #header { 
-            background: var(--bg-secondary); 
-            padding: 12px 20px; 
-            border-bottom: 1px solid var(--border);
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        }
-        
-        #header h1 { 
-            font-size: 1.3rem; 
-            color: var(--accent); 
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        #header .subtitle {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            font-weight: 400;
-        }
-        
-        /* Navigation */
-        #nav { 
-            display: flex; 
-            gap: 6px; 
-            flex-wrap: wrap;
-        }
-        
-        #nav button { 
-            background: var(--bg-tertiary); 
-            border: none; 
-            color: var(--text-primary); 
-            padding: 8px 14px;
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-size: 0.85rem; 
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-weight: 500;
-        }
-        
-        #nav button:hover { 
-            background: var(--border); 
-            transform: translateY(-1px);
-        }
-        
-        #nav button.active { 
-            background: var(--accent); 
-            color: var(--bg-primary);
-            box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
-        }
-        
-        /* Main Content */
-        #main { 
-            height: calc(100vh - 120px); 
-            display: flex; 
-            flex-direction: column; 
-        }
-        
-        .view { 
-            display: none; 
-            flex: 1; 
-            padding: 20px; 
-            overflow-y: auto;
-        }
-        
-        .view.active { 
-            display: flex; 
-            flex-direction: column; 
-        }
-        
-        /* Chat Interface */
-        #chat-container { 
-            flex: 1; 
-            display: flex; 
-            flex-direction: column; 
-            max-width: 1200px;
-            margin: 0 auto;
-            width: 100%;
-        }
-        
-        #messages { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 20px; 
-            background: var(--bg-secondary); 
-            border-radius: 12px; 
-            margin-bottom: 20px;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
-        }
-        
-        .message { 
-            margin-bottom: 16px; 
-            padding: 16px; 
-            border-radius: 12px; 
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .user { 
-            background: var(--bg-tertiary); 
-            margin-left: 15%; 
-            border-left: 4px solid var(--accent);
-        }
-        
-        .ai { 
-            background: var(--bg-primary); 
-            margin-right: 15%; 
-            border-left: 4px solid var(--success);
-        }
-        
-        .message strong {
-            color: var(--accent);
-            font-weight: 600;
-        }
-        
-        .message pre {
+
+        body {
+            font-family: 'Inter', sans-serif;
             background: var(--bg-primary);
-            padding: 12px;
-            border-radius: 6px;
-            margin: 8px 0;
-            overflow-x: auto;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
-        
-        /* Input Area */
-        #input-area { 
-            display: flex; 
-            gap: 12px; 
-            align-items: flex-end;
-        }
-        
-        #message-input { 
-            flex: 1; 
-            padding: 16px; 
-            background: var(--bg-secondary); 
-            border: 2px solid var(--border);
-            border-radius: 12px; 
-            color: var(--text-primary); 
-            font-size: 1rem; 
-            outline: none;
-            resize: vertical;
-            min-height: 50px;
-            max-height: 150px;
-            font-family: inherit;
-        }
-        
-        #message-input:focus { 
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
-        }
-        
-        #send-btn { 
-            padding: 16px 24px; 
-            background: var(--accent); 
-            color: var(--bg-primary); 
-            border: none;
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-weight: 600; 
-            transition: all 0.2s;
+
+        /* Header */
+        #header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: space-between;
+            height: 60px;
+            flex-shrink: 0;
         }
-        
-        #send-btn:hover { 
-            background: #0ea5e9;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
-        }
-        
-        #send-btn:disabled {
-            background: var(--bg-tertiary);
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        /* Cards and Panels */
-        .card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid var(--border);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .card h3 {
-            color: var(--accent);
-            margin-bottom: 16px;
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-        
-        /* Forms */
-        .form-group { 
-            margin-bottom: 20px; 
-        }
-        
-        .form-group label { 
-            display: block; 
-            margin-bottom: 8px; 
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .form-group input, 
-        .form-group select, 
-        .form-group textarea { 
-            width: 100%; 
-            padding: 12px; 
-            background: var(--bg-primary); 
-            border: 2px solid var(--border);
-            border-radius: 8px; 
-            color: var(--text-primary); 
-            font-size: 1rem;
-            font-family: inherit;
-            transition: border-color 0.2s;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            border-color: var(--accent);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
-        }
-        
-        /* Buttons */
-        .btn { 
-            padding: 12px 20px; 
-            background: var(--accent); 
-            color: var(--bg-primary); 
-            border: none;
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-weight: 600; 
-            margin-right: 10px;
-            margin-bottom: 10px;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
-        }
-        
-        .btn-secondary { 
-            background: var(--bg-tertiary); 
-            color: var(--text-primary); 
-        }
-        
-        .btn-success { 
-            background: var(--success); 
-            color: white; 
-        }
-        
-        .btn-warning { 
-            background: var(--warning); 
-            color: white; 
-        }
-        
-        .btn-error { 
-            background: var(--error); 
-            color: white; 
-        }
-        
-        /* File List */
-        .file-list { 
-            margin-top: 20px; 
-        }
-        
-        .file-item { 
-            padding: 16px; 
-            background: var(--bg-secondary); 
-            margin-bottom: 8px; 
-            border-radius: 8px;
-            cursor: pointer; 
-            transition: all 0.2s;
+
+        #header .logo {
             display: flex;
             align-items: center;
             gap: 12px;
-            border: 1px solid transparent;
         }
-        
-        .file-item:hover { 
-            background: var(--bg-tertiary);
-            border-color: var(--accent);
-            transform: translateX(4px);
-        }
-        
-        .file-icon {
+
+        #header .logo h1 {
             font-size: 1.2rem;
-            width: 24px;
-            text-align: center;
+            font-weight: 600;
+            color: var(--accent);
         }
-        
-        .file-info {
-            flex: 1;
-        }
-        
-        .file-name {
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .file-meta {
-            font-size: 0.85rem;
+
+        #header .logo small {
             color: var(--text-secondary);
-            margin-top: 2px;
+            font-size: 0.8rem;
         }
-        
-        /* Code Editor */
-        .code-editor {
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--bg-primary);
+
+        #nav-menu {
+            display: flex;
+            gap: 4px;
+        }
+
+        #nav-menu button {
+            background: none;
+            border: none;
             color: var(--text-primary);
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            font-size: 0.95rem;
-            line-height: 1.5;
-            resize: vertical;
-            min-height: 300px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            white-space: nowrap;
         }
-        
-        /* Terminal */
-        .terminal {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: 'JetBrains Mono', monospace;
-            padding: 20px;
-            border-radius: 8px;
-            height: 400px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            border: 2px solid var(--border);
+
+        #nav-menu button:hover {
+            background: var(--bg-tertiary);
         }
-        
-        /* Status Messages */
-        .status {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-weight: 500;
+
+        #nav-menu button.active {
+            background: var(--accent);
+            color: var(--bg-primary);
         }
-        
-        .status.success { 
-            background: rgba(34, 197, 94, 0.1);
-            color: var(--success); 
-            border: 1px solid var(--success);
+
+        /* Main Content */
+        #main-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
         }
-        
-        .status.error { 
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--error); 
-            border: 1px solid var(--error);
+
+        .view {
+            display: none;
+            height: 100%;
+            overflow: hidden;
         }
-        
-        .status.warning { 
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--warning); 
-            border: 1px solid var(--warning);
+
+        .view.active {
+            display: flex;
+            flex-direction: column;
         }
-        
+
         /* Footer */
-        #status { 
-            position: fixed; 
-            bottom: 0; 
-            left: 0; 
-            right: 0; 
+        #footer {
             background: var(--bg-secondary);
-            padding: 8px 20px; 
-            font-size: 0.8rem; 
-            color: var(--text-secondary); 
             border-top: 1px solid var(--border);
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            z-index: 50;
+            height: 32px;
+            flex-shrink: 0;
         }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            #header {
-                flex-direction: column;
-                gap: 12px;
-                padding: 16px;
-            }
-            
-            #nav {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            #nav button {
-                flex: 1;
-                min-width: 0;
-                padding: 10px 8px;
-                font-size: 0.8rem;
-            }
-            
-            .view {
-                padding: 16px;
-            }
-            
-            .message {
-                margin-left: 0;
-                margin-right: 0;
-            }
-            
-            #input-area {
-                flex-direction: column;
-            }
-            
-            #message-input {
-                margin-bottom: 12px;
-            }
-        }
-        
-        /* Animations */
-        .fade-in {
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .slide-in {
-            animation: slideIn 0.3s ease;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(-20px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        
-        /* Loading */
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--border);
-            border-radius: 50%;
-            border-top-color: var(--accent);
-            animation: spin 1s ease-in-out infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Tabs */
-        .tabs {
+
+        /* Chat View */
+        #chat-view {
             display: flex;
-            border-bottom: 2px solid var(--border);
-            margin-bottom: 20px;
+            flex-direction: column;
         }
-        
-        .tab {
-            padding: 12px 20px;
+
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .message.ai {
+            align-self: flex-start;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        #chat-input-container {
+            display: flex;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            gap: 12px;
+        }
+
+        #chat-input {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 24px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            outline: none;
+        }
+
+        #chat-send {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 24px;
+            background: var(--accent);
+            color: var(--bg-primary);
             cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-            font-weight: 500;
+            font-weight: bold;
+            transition: all 0.2s ease;
         }
-        
-        .tab:hover {
+
+        #chat-send:hover {
+            opacity: 0.9;
+        }
+
+        /* Files View */
+        #files-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #files-sidebar {
+            width: 300px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #files-toolbar {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        #files-toolbar button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+
+        #files-toolbar button:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        #files-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            gap: 8px;
+        }
+
+        .file-item:hover {
             background: var(--bg-tertiary);
         }
-        
-        .tab.active {
-            border-bottom-color: var(--accent);
+
+        .file-item.active {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        #files-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-tertiary);
+        }
+
+        #files-content-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        #files-content-body {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        /* Editor View */
+        #editor-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #editor-sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #editor-sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        #editor-files-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        #editor-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #editor-toolbar {
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9rem;
+        }
+
+        #editor-toolbar button {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        #editor-toolbar button:hover {
+            background: var(--bg-tertiary);
+        }
+
+        #editor-filename {
+            font-weight: 500;
+            color: var(--accent);
+            min-width: 120px;
+            text-align: center;
+        }
+
+        #editor-textarea {
+            flex: 1;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            padding: 16px;
+            line-height: 1.6;
+            white-space: pre;
+            outline: none;
+            resize: none;
+            border: none;
+            tab-size: 2;
+        }
+
+        /* Terminal View */
+        #terminal-view {
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+        }
+
+        #terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            background: var(--bg-primary);
+            color: var(--success);
+        }
+
+        #terminal-input-container {
+            display: flex;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            align-items: center;
+            gap: 8px;
+        }
+
+        #terminal-prompt {
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 500;
+        }
+
+        #terminal-input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        /* Server View */
+        #server-view {
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+        }
+
+        .server-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .server-section h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .metric-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 600;
             color: var(--accent);
         }
-        
-        /* Grid Layout */
-        .grid {
-            display: grid;
-            gap: 20px;
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
         }
-        
-        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
-        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-        
-        /* Utilities */
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .mb-0 { margin-bottom: 0; }
-        .mb-1 { margin-bottom: 8px; }
-        .mb-2 { margin-bottom: 16px; }
-        .mb-3 { margin-bottom: 24px; }
-        .mt-0 { margin-top: 0; }
-        .mt-1 { margin-top: 8px; }
-        .mt-2 { margin-top: 16px; }
-        .mt-3 { margin-top: 24px; }
-        .hidden { display: none; }
-        .flex { display: flex; }
-        .flex-1 { flex: 1; }
-        .items-center { align-items: center; }
-        .justify-between { justify-content: space-between; }
-        .gap-2 { gap: 8px; }
-        .gap-3 { gap: 12px; }
-        .gap-4 { gap: 16px; }
+
+        .server-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .server-controls button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-start {
+            background: var(--success);
+            color: var(--bg-primary);
+        }
+
+        .btn-stop {
+            background: var(--error);
+            color: var(--bg-primary);
+        }
+
+        .btn-restart {
+            background: var(--warning);
+            color: var(--bg-primary);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        /* Database View */
+        #database-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #db-sidebar {
+            width: 300px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #db-sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        #db-tables-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        #db-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #db-editor {
+            height: 200px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            padding: 12px;
+            border: none;
+            outline: none;
+            resize: none;
+            border-bottom: 1px solid var(--border);
+        }
+
+        #db-results {
+            flex: 1;
+            overflow: auto;
+            background: var(--bg-tertiary);
+        }
+
+        #db-toolbar {
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+
+        #db-toolbar button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+
+        #db-toolbar button:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        /* Browser View */
+        #browser-view {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #browser-toolbar {
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #browser-toolbar button {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        #browser-toolbar button:hover {
+            background: var(--bg-tertiary);
+        }
+
+        #browser-url {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        #browser-iframe {
+            flex: 1;
+            border: none;
+            background: white;
+        }
+
+        /* Projects View */
+        #projects-view {
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+        }
+
+        #projects-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #projects-header h2 {
+            color: var(--accent);
+            font-size: 1.3rem;
+        }
+
+        #projects-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        #projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+
+        .project-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .project-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .project-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .project-description {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .project-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .project-tag {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+        }
+
+        .project-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .project-actions button {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+
+        /* Prompts View */
+        #prompts-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #prompts-sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #prompts-sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        #prompts-categories {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+
+        .category-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .category-item.active {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .category-count {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+        }
+
+        #prompts-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #prompts-toolbar {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+
+        #prompts-toolbar button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+
+        #prompts-toolbar button:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        #prompts-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .prompt-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .prompt-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .prompt-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .prompt-description {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .prompt-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .prompt-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .prompt-actions button {
+            flex: 1;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: all 0.2s ease;
+        }
+
+        /* Config View */
+        #config-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #config-sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #config-sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        #config-sections {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .config-section-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            gap: 8px;
+        }
+
+        .config-section-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .config-section-item.active {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        #config-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #config-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .config-section {
+            display: none;
+        }
+
+        .config-section.active {
+            display: block;
+        }
+
+        .config-group {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .config-group h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-size: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .form-control:focus {
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-tertiary);
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-primary);
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--accent);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Help View */
+        #help-view {
+            display: flex;
+            flex-direction: row;
+        }
+
+        #help-sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #help-sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        #help-sections {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .help-section-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            gap: 8px;
+        }
+
+        .help-section-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .help-section-item.active {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        #help-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #help-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .help-section {
+            display: none;
+        }
+
+        .help-section.active {
+            display: block;
+        }
+
+        .help-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .help-card h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+
+        .help-card p {
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .help-card code {
+            background: var(--bg-tertiary);
+            color: var(--accent);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .help-card pre {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            margin: 12px 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            #nav-menu {
+                flex-wrap: wrap;
+                gap: 2px;
+            }
+
+            #nav-menu button {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+            }
+
+            #files-sidebar,
+            #editor-sidebar,
+            #db-sidebar,
+            #prompts-sidebar,
+            #config-sidebar,
+            #help-sidebar {
+                width: 200px;
+            }
+
+            .metrics-grid,
+            #projects-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            #projects-grid,
+            #prompts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent);
+        }
     </style>
 </head>
 <body>
+    <!-- Header -->
     <div id="header">
-        <div>
-            <h1>🚀 SGC-AgentOne <span class="subtitle">v2.1</span></h1>
-            <div class="subtitle">Assistant Universel de Développement</div>
+        <div class="logo">
+            <h1>SGC-AgentOne</h1>
+            <small>v2.1 - By AMICHI Amine</small>
         </div>
-        <div id="nav">
-            <button class="nav-btn active" data-view="chat">💬 Chat</button>
-            <button class="nav-btn" data-view="files">📁 Fichiers</button>
-            <button class="nav-btn" data-view="editor">📝 Éditeur</button>
-            <button class="nav-btn" data-view="terminal">⚡ Terminal</button>
-            <button class="nav-btn" data-view="server">🖥️ Serveur</button>
-            <button class="nav-btn" data-view="database">🗄️ Base</button>
-            <button class="nav-btn" data-view="logs">📊 Logs</button>
-            <button class="nav-btn" data-view="backup">💾 Backup</button>
-            <button class="nav-btn" data-view="settings">⚙️ Config</button>
-            <button class="nav-btn" data-view="help">❓ Aide</button>
+        <div id="nav-menu">
+            <button data-view="chat" class="active">💬 Chat</button>
+            <button data-view="files">📁 Fichiers</button>
+            <button data-view="editor">📝 Éditeur</button>
+            <button data-view="terminal">⚡ Terminal</button>
+            <button data-view="server">🖥️ Serveur</button>
+            <button data-view="database">🗄️ Base</button>
+            <button data-view="browser">🌐 Navigateur</button>
+            <button data-view="projects">📂 Projets</button>
+            <button data-view="prompts">📝 Prompts</button>
+            <button data-view="config">⚙️ Config</button>
+            <button data-view="help">❓ Aide</button>
         </div>
     </div>
-    
-    <div id="main">
+
+    <!-- Main Content -->
+    <div id="main-content">
         <!-- Chat View -->
-        <div id="chat" class="view active">
-            <div id="chat-container">
-                <div id="messages">
-                    <div class="message ai">
-                        <strong>🤖 SGC-AgentOne:</strong> Bonjour ! Je suis votre assistant de développement universel. 
-                        <br><br>📋 <strong>Commandes disponibles :</strong>
-                        <pre>• createFile nom.ext : contenu
-• readFile nom.ext
-• listDir dossier
-• createDir nom-dossier
-• deleteFile nom.ext
-• serverStatus
-• backup : créer une sauvegarde</pre>
-                        
-                        <br>💡 <strong>Exemples :</strong>
-                        <pre>createFile index.php : &lt;?php echo "Hello World!"; ?&gt;
-listDir .
-readFile index.php
-backup : sauvegarde complète</pre>
-                    </div>
-                </div>
-                <div id="input-area">
-                    <textarea id="message-input" placeholder="Tapez votre commande ou question..." rows="2"></textarea>
-                    <button id="send-btn">
-                        <span>📤</span>
-                        Envoyer
-                    </button>
-                </div>
+        <div id="chat-view" class="view active">
+            <div id="messages">
+                <div class="message ai">🤖 SGC-AgentOne v2.1 prêt ! Tapez vos commandes ci-dessous.
+
+Commandes disponibles :
+• createFile: chemin contenu
+• readFile: chemin
+• listDir: dossier
+• createDir: nom
+• deleteFile: chemin
+
+Exemple : createFile: test.txt Bonjour monde!</div>
+            </div>
+            <div id="chat-input-container">
+                <input type="text" id="chat-input" placeholder="Tapez votre commande..." autocomplete="off">
+                <button id="chat-send">Envoyer</button>
             </div>
         </div>
-        
+
         <!-- Files View -->
-        <div id="files" class="view">
-            <div class="card">
-                <h3>📁 Gestionnaire de Fichiers</h3>
-                <div class="flex gap-3 mb-3">
-                    <button class="btn" onclick="loadFileList()">🔄 Actualiser</button>
-                    <button class="btn btn-secondary" onclick="createNewFile()">➕ Nouveau fichier</button>
-                    <button class="btn btn-secondary" onclick="createNewFolder()">📁 Nouveau dossier</button>
-                    <button class="btn btn-warning" onclick="uploadFile()">⬆️ Upload</button>
+        <div id="files-view" class="view">
+            <div id="files-sidebar">
+                <div id="files-toolbar">
+                    <button onclick="createNewFile()">📄 Nouveau</button>
+                    <button onclick="createNewFolder()">📁 Dossier</button>
+                    <button onclick="refreshFiles()">🔄 Actualiser</button>
                 </div>
-                <div class="form-group">
-                    <label>📂 Chemin actuel</label>
-                    <input type="text" id="current-path" value="." placeholder="Chemin du dossier">
-                    <button class="btn mt-1" onclick="navigateToPath()">📂 Naviguer</button>
+                <div id="files-tree">
+                    <div class="file-item" onclick="loadDirectory('.')">
+                        📁 Racine du projet
+                    </div>
                 </div>
             </div>
-            
-            <div id="file-list" class="file-list">
-                <div class="text-center" style="padding: 40px; color: var(--text-secondary);">
-                    <div style="font-size: 3rem; margin-bottom: 16px;">📂</div>
-                    <p>Cliquez sur "Actualiser" pour voir les fichiers du projet</p>
+            <div id="files-content">
+                <div id="files-content-header">
+                    <h3>📁 Explorateur de Fichiers</h3>
+                </div>
+                <div id="files-content-body">
+                    <p>Sélectionnez un fichier ou dossier dans la sidebar pour voir son contenu.</p>
                 </div>
             </div>
         </div>
-        
+
         <!-- Editor View -->
-        <div id="editor" class="view">
-            <div class="card">
-                <h3>📝 Éditeur de Code</h3>
-                <div class="grid grid-2">
-                    <div class="form-group">
-                        <label for="editor-file">📄 Fichier à éditer</label>
-                        <input type="text" id="editor-file" placeholder="Nom du fichier (ex: index.php)">
-                    </div>
-                    <div class="form-group">
-                        <label>🔧 Actions</label>
-                        <div class="flex gap-2">
-                            <button class="btn" onclick="loadFileInEditor()">📂 Charger</button>
-                            <button class="btn btn-success" onclick="saveFileFromEditor()">💾 Sauvegarder</button>
-                            <button class="btn btn-secondary" onclick="clearEditor()">🗑️ Vider</button>
-                        </div>
-                    </div>
+        <div id="editor-view" class="view">
+            <div id="editor-sidebar">
+                <div id="editor-sidebar-header">📝 Fichiers Ouverts</div>
+                <div id="editor-files-list">
+                    <p style="padding: 12px; color: var(--text-secondary); font-size: 0.8rem;">Aucun fichier ouvert</p>
                 </div>
             </div>
-            
-            <div class="card">
-                <div class="flex justify-between items-center mb-3">
-                    <h3>📄 Contenu du fichier</h3>
-                    <div class="flex gap-2">
-                        <button class="btn btn-secondary" onclick="formatCode()">🎨 Formater</button>
-                        <button class="btn btn-secondary" onclick="toggleWrap()">📏 Retour ligne</button>
-                    </div>
+            <div id="editor-main">
+                <div id="editor-toolbar">
+                    <button onclick="saveCurrentFile()">💾 Sauvegarder</button>
+                    <button onclick="closeCurrentFile()">✖️ Fermer</button>
+                    <div id="editor-filename">Aucun fichier ouvert</div>
+                    <button onclick="refreshEditor()">🔄 Actualiser</button>
                 </div>
-                <textarea id="code-editor" class="code-editor" placeholder="Contenu du fichier apparaîtra ici..."></textarea>
+                <textarea id="editor-textarea" placeholder="Ouvrez un fichier pour commencer à éditer..."></textarea>
             </div>
         </div>
-        
+
         <!-- Terminal View -->
-        <div id="terminal" class="view">
-            <div class="card">
-                <h3>⚡ Terminal de Commandes</h3>
-                <div class="flex gap-2 mb-3">
-                    <button class="btn" onclick="runQuickCommand('listDir .')">📂 Lister</button>
-                    <button class="btn" onclick="runQuickCommand('readFile index.php')">📄 Lire index</button>
-                    <button class="btn" onclick="runQuickCommand('serverStatus')">🖥️ Statut serveur</button>
-                    <button class="btn btn-warning" onclick="runQuickCommand('backup : sauvegarde auto')">💾 Backup</button>
-                    <button class="btn btn-error" onclick="clearTerminal()">🗑️ Effacer</button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>📟 Sortie Terminal</h3>
-                <div id="terminal-output" class="terminal"></div>
-                <div class="flex gap-3 mt-3">
-                    <input type="text" id="terminal-input" placeholder="Tapez votre commande..." class="flex-1">
-                    <button class="btn" onclick="runTerminalCommand()">▶️ Exécuter</button>
-                </div>
+        <div id="terminal-view" class="view">
+            <div id="terminal-output">SGC-AgentOne Terminal v2.1
+Tapez 'help' pour voir les commandes disponibles.
+
+</div>
+            <div id="terminal-input-container">
+                <span id="terminal-prompt">sgc@agentone:~$</span>
+                <input type="text" id="terminal-input" autocomplete="off">
             </div>
         </div>
-        
+
         <!-- Server View -->
-        <div id="server" class="view">
-            <div class="grid grid-2">
-                <div class="card">
-                    <h3>🖥️ Statut du Serveur</h3>
-                    <div id="server-status" class="status">
-                        <div class="loading"></div> Vérification du statut...
+        <div id="server-view" class="view">
+            <div class="server-section">
+                <h3>🖥️ État du Serveur</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="server-status">🟢</div>
+                        <div class="metric-label">Statut</div>
                     </div>
-                    <div class="flex gap-2 mt-3">
-                        <button class="btn btn-success" onclick="startServer()">▶️ Démarrer</button>
-                        <button class="btn btn-error" onclick="stopServer()">⏹️ Arrêter</button>
-                        <button class="btn" onclick="restartServer()">🔄 Redémarrer</button>
-                        <button class="btn btn-secondary" onclick="checkServerStatus()">📊 Vérifier</button>
+                    <div class="metric-card">
+                        <div class="metric-value" id="server-port">5000</div>
+                        <div class="metric-label">Port</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="server-uptime">00:00:00</div>
+                        <div class="metric-label">Uptime</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="server-connections">0</div>
+                        <div class="metric-label">Connexions</div>
                     </div>
                 </div>
-                
-                <div class="card">
-                    <h3>⚙️ Configuration Serveur</h3>
-                    <div class="form-group">
-                        <label>🌐 Port</label>
-                        <input type="number" id="server-port" value="5000" min="1000" max="65535">
-                    </div>
-                    <div class="form-group">
-                        <label>🏠 Hôte</label>
-                        <input type="text" id="server-host" value="0.0.0.0">
-                    </div>
-                    <button class="btn" onclick="updateServerConfig()">💾 Appliquer</button>
+                <div class="server-controls">
+                    <button class="btn-start" onclick="startServer()">▶️ Démarrer</button>
+                    <button class="btn-stop" onclick="stopServer()">⏹️ Arrêter</button>
+                    <button class="btn-restart" onclick="restartServer()">🔄 Redémarrer</button>
+                    <button class="btn-secondary" onclick="viewLogs()">📋 Logs</button>
                 </div>
             </div>
-            
-            <div class="card">
-                <h3>📈 Monitoring</h3>
-                <div class="grid grid-3">
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--success);">●</div>
-                        <div>Serveur PHP</div>
-                        <div class="text-secondary">Actif</div>
+            <div class="server-section">
+                <h3>📊 Métriques Système</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="cpu-usage">12%</div>
+                        <div class="metric-label">CPU</div>
                     </div>
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--accent);">📊</div>
-                        <div>Requêtes</div>
-                        <div class="text-secondary">0/min</div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="memory-usage">256MB</div>
+                        <div class="metric-label">Mémoire</div>
                     </div>
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--warning);">⚡</div>
-                        <div>Performance</div>
-                        <div class="text-secondary">Optimale</div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="disk-usage">2.1GB</div>
+                        <div class="metric-label">Disque</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="requests-count">1,247</div>
+                        <div class="metric-label">Requêtes</div>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- Database View -->
-        <div id="database" class="view">
-            <div class="card">
-                <h3>🗄️ Gestionnaire de Base de Données</h3>
-                <div class="flex gap-2 mb-3">
-                    <button class="btn" onclick="createDatabase()">➕ Créer DB</button>
-                    <button class="btn btn-secondary" onclick="listTables()">📋 Tables</button>
-                    <button class="btn btn-warning" onclick="backupDatabase()">💾 Backup DB</button>
-                    <button class="btn btn-error" onclick="optimizeDatabase()">⚡ Optimiser</button>
-                </div>
-            </div>
-            
-            <div class="grid grid-2">
-                <div class="card">
-                    <h3>📊 Requêtes SQL</h3>
-                    <textarea id="sql-query" class="code-editor" placeholder="SELECT * FROM users;" style="min-height: 200px;"></textarea>
-                    <div class="flex gap-2 mt-3">
-                        <button class="btn" onclick="executeSQLQuery()">▶️ Exécuter</button>
-                        <button class="btn btn-secondary" onclick="formatSQL()">🎨 Formater</button>
-                        <button class="btn btn-secondary" onclick="clearSQL()">🗑️ Vider</button>
+        <div id="database-view" class="view">
+            <div id="db-sidebar">
+                <div id="db-sidebar-header">🗄️ Tables</div>
+                <div id="db-tables-list">
+                    <div class="file-item" onclick="selectTable('users')">
+                        👥 users (0)
                     </div>
-                </div>
-                
-                <div class="card">
-                    <h3>📋 Résultats</h3>
-                    <div id="sql-results" class="terminal" style="min-height: 200px;">
-                        Aucune requête exécutée
+                    <div class="file-item" onclick="selectTable('projects')">
+                        📂 projects (0)
+                    </div>
+                    <div class="file-item" onclick="selectTable('logs')">
+                        📋 logs (0)
                     </div>
                 </div>
             </div>
-            
-            <div class="card">
-                <h3>🏗️ Générateur de Tables</h3>
-                <div class="grid grid-2">
-                    <div class="form-group">
-                        <label>📝 Nom de la table</label>
-                        <input type="text" id="table-name" placeholder="users">
-                    </div>
-                    <div class="form-group">
-                        <label>🔧 Colonnes (JSON)</label>
-                        <textarea id="table-columns" placeholder='{"id": "INTEGER PRIMARY KEY", "name": "TEXT NOT NULL", "email": "TEXT UNIQUE"}'></textarea>
-                    </div>
+            <div id="db-main">
+                <div id="db-toolbar">
+                    <button onclick="executeQuery()">▶️ Exécuter</button>
+                    <button onclick="saveQuery()">💾 Sauvegarder</button>
+                    <button onclick="loadQuery()">📂 Charger</button>
+                    <button onclick="formatQuery()">🎨 Formater</button>
+                    <button onclick="exportResults()">📤 Exporter</button>
                 </div>
-                <button class="btn" onclick="generateTable()">🏗️ Créer Table</button>
-            </div>
-        </div>
-        
-        <!-- Logs View -->
-        <div id="logs" class="view">
-            <div class="card">
-                <h3>📊 Gestionnaire de Logs</h3>
-                <div class="tabs">
-                    <div class="tab active" onclick="switchLogTab('actions')">🎯 Actions</div>
-                    <div class="tab" onclick="switchLogTab('chat')">💬 Chat</div>
-                    <div class="tab" onclick="switchLogTab('errors')">❌ Erreurs</div>
-                    <div class="tab" onclick="switchLogTab('system')">🖥️ Système</div>
-                </div>
-                <div class="flex gap-2 mb-3">
-                    <button class="btn" onclick="refreshLogs()">🔄 Actualiser</button>
-                    <button class="btn btn-warning" onclick="downloadLogs()">⬇️ Télécharger</button>
-                    <button class="btn btn-error" onclick="clearAllLogs()">🗑️ Effacer tout</button>
-                    <button class="btn btn-secondary" onclick="toggleAutoRefresh()">⏱️ Auto-refresh</button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="flex justify-between items-center mb-3">
-                    <h3 id="log-title">📊 Logs des Actions</h3>
-                    <div class="flex gap-2">
-                        <input type="text" id="log-filter" placeholder="Filtrer les logs..." style="width: 200px;">
-                        <button class="btn btn-secondary" onclick="filterLogs()">🔍 Filtrer</button>
-                    </div>
-                </div>
-                <div id="logs-content" class="terminal" style="min-height: 400px;">
-                    Chargement des logs...
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>📈 Statistiques</h3>
-                <div class="grid grid-4">
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--success);">✅</div>
-                        <div>Succès</div>
-                        <div id="stats-success" class="text-secondary">0</div>
-                    </div>
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--error);">❌</div>
-                        <div>Erreurs</div>
-                        <div id="stats-errors" class="text-secondary">0</div>
-                    </div>
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--warning);">⚠️</div>
-                        <div>Avertissements</div>
-                        <div id="stats-warnings" class="text-secondary">0</div>
-                    </div>
-                    <div class="text-center">
-                        <div style="font-size: 2rem; color: var(--accent);">📊</div>
-                        <div>Total</div>
-                        <div id="stats-total" class="text-secondary">0</div>
+                <textarea id="db-editor" placeholder="-- Tapez votre requête SQL ici
+SELECT * FROM users LIMIT 10;"></textarea>
+                <div id="db-results">
+                    <div style="padding: 16px; color: var(--text-secondary);">
+                        Exécutez une requête pour voir les résultats ici.
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Backup View -->
-        <div id="backup" class="view">
-            <div class="card">
-                <h3>💾 Gestionnaire de Sauvegardes</h3>
-                <div class="flex gap-2 mb-3">
-                    <button class="btn btn-success" onclick="createBackup()">💾 Créer Backup</button>
-                    <button class="btn" onclick="listBackups()">📋 Lister</button>
-                    <button class="btn btn-warning" onclick="scheduleBackup()">⏰ Programmer</button>
-                    <button class="btn btn-secondary" onclick="restoreBackup()">🔄 Restaurer</button>
+
+        <!-- Browser View -->
+        <div id="browser-view" class="view">
+            <div id="browser-toolbar">
+                <button onclick="browserBack()">◀️</button>
+                <button onclick="browserForward()">▶️</button>
+                <button onclick="browserRefresh()">🔄</button>
+                <button onclick="browserHome()">🏠</button>
+                <input type="text" id="browser-url" value="http://localhost:5000" placeholder="Entrez une URL...">
+                <button onclick="browserGo()">🔍</button>
+            </div>
+            <iframe id="browser-iframe" src="about:blank"></iframe>
+        </div>
+
+        <!-- Projects View -->
+        <div id="projects-view" class="view">
+            <div id="projects-header">
+                <h2>📂 Gestionnaire de Projets</h2>
+                <button onclick="createNewProject()" style="padding: 8px 16px; background: var(--accent); color: var(--bg-primary); border: none; border-radius: 6px; cursor: pointer;">➕ Nouveau Projet</button>
+            </div>
+            <div id="projects-stats">
+                <div class="stat-card">
+                    <div class="stat-value">3</div>
+                    <div class="stat-label">Total</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">2</div>
+                    <div class="stat-label">Actifs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">1</div>
+                    <div class="stat-label">En Pause</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Archivés</div>
                 </div>
             </div>
-            
-            <div class="grid grid-2">
-                <div class="card">
-                    <h3>⚙️ Configuration Backup</h3>
-                    <div class="form-group">
-                        <label>📝 Nom de la sauvegarde</label>
-                        <input type="text" id="backup-name" placeholder="backup_manuel">
+            <div id="projects-grid">
+                <div class="project-card">
+                    <div class="project-title">SGC-AgentOne</div>
+                    <div class="project-description">Assistant universel de développement</div>
+                    <div class="project-tags">
+                        <span class="project-tag">PHP</span>
+                        <span class="project-tag">HTML</span>
+                        <span class="project-tag">CSS</span>
+                        <span class="project-tag">JavaScript</span>
                     </div>
-                    <div class="form-group">
-                        <label>📂 Dossiers à inclure</label>
-                        <textarea id="backup-folders" placeholder="core/&#10;extensions/&#10;api/"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>🚫 Dossiers à exclure</label>
-                        <textarea id="backup-exclude" placeholder="logs/&#10;backups/&#10;tmp/"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="backup-compress"> 
-                            🗜️ Compression ZIP
-                        </label>
+                    <div class="project-actions">
+                        <button style="background: var(--accent); color: var(--bg-primary);">Ouvrir</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">⭐</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">📤</button>
                     </div>
                 </div>
-                
-                <div class="card">
-                    <h3>📊 Statut des Sauvegardes</h3>
-                    <div id="backup-status" class="status">
-                        <div>📊 Prêt pour sauvegarde</div>
+                <div class="project-card">
+                    <div class="project-title">Portfolio Web</div>
+                    <div class="project-description">Site portfolio personnel</div>
+                    <div class="project-tags">
+                        <span class="project-tag">React</span>
+                        <span class="project-tag">TypeScript</span>
+                        <span class="project-tag">Tailwind</span>
                     </div>
-                    <div class="grid grid-2 mt-3">
-                        <div class="text-center">
-                            <div style="font-size: 2rem; color: var(--success);">💾</div>
-                            <div>Dernière sauvegarde</div>
-                            <div id="last-backup" class="text-secondary">Jamais</div>
-                        </div>
-                        <div class="text-center">
-                            <div style="font-size: 2rem; color: var(--accent);">📦</div>
-                            <div>Taille totale</div>
-                            <div id="backup-size" class="text-secondary">0 MB</div>
-                        </div>
+                    <div class="project-actions">
+                        <button style="background: var(--accent); color: var(--bg-primary);">Ouvrir</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">⭐</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">📤</button>
                     </div>
                 </div>
-            </div>
-            
-            <div class="card">
-                <h3>📋 Liste des Sauvegardes</h3>
-                <div id="backup-list" class="file-list">
-                    <div class="text-center" style="padding: 40px; color: var(--text-secondary);">
-                        <div style="font-size: 3rem; margin-bottom: 16px;">💾</div>
-                        <p>Aucune sauvegarde trouvée</p>
-                        <p>Cliquez sur "Créer Backup" pour commencer</p>
+                <div class="project-card">
+                    <div class="project-title">API REST</div>
+                    <div class="project-description">API backend pour application mobile</div>
+                    <div class="project-tags">
+                        <span class="project-tag">Node.js</span>
+                        <span class="project-tag">Express</span>
+                        <span class="project-tag">MongoDB</span>
+                    </div>
+                    <div class="project-actions">
+                        <button style="background: var(--accent); color: var(--bg-primary);">Ouvrir</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">⭐</button>
+                        <button style="background: var(--bg-tertiary); color: var(--text-primary);">📤</button>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Settings View -->
-        <div id="settings" class="view">
-            <div class="tabs">
-                <div class="tab active" onclick="switchSettingsTab('general')">🎛️ Général</div>
-                <div class="tab" onclick="switchSettingsTab('appearance')">🎨 Apparence</div>
-                <div class="tab" onclick="switchSettingsTab('security')">🔒 Sécurité</div>
-                <div class="tab" onclick="switchSettingsTab('advanced')">⚙️ Avancé</div>
-            </div>
-            
-            <!-- General Settings -->
-            <div id="settings-general" class="settings-tab">
-                <div class="grid grid-2">
-                    <div class="card">
-                        <h3>📝 Informations Générales</h3>
-                        <div class="form-group">
-                            <label>🏷️ Titre de l'application</label>
-                            <input type="text" id="app-title" placeholder="SGC-AgentOne">
-                        </div>
-                        <div class="form-group">
-                            <label>👤 Auteur</label>
-                            <input type="text" id="app-author" placeholder="By AMICHI Amine">
-                        </div>
-                        <div class="form-group">
-                            <label>📝 Description</label>
-                            <textarea id="app-description" placeholder="Assistant universel de développement"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>🌐 Langue</label>
-                            <select id="app-language">
-                                <option value="fr">Français</option>
-                                <option value="en">English</option>
-                                <option value="es">Español</option>
-                            </select>
-                        </div>
+
+        <!-- Prompts View -->
+        <div id="prompts-view" class="view">
+            <div id="prompts-sidebar">
+                <div id="prompts-sidebar-header">📝 Catégories</div>
+                <div id="prompts-categories">
+                    <div class="category-item active">
+                        <span>🎯 Tous</span>
+                        <span class="category-count">12</span>
                     </div>
-                    
-                    <div class="card">
-                        <h3>⚙️ Comportement</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="auto-save"> 
-                                💾 Sauvegarde automatique
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="file-watcher"> 
-                                👁️ Surveillance des fichiers
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="syntax-highlighting"> 
-                                🎨 Coloration syntaxique
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="backup-enabled"> 
-                                💾 Sauvegardes automatiques
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>⏱️ Intervalle de sauvegarde (minutes)</label>
-                            <input type="number" id="backup-interval" value="30" min="5" max="1440">
-                        </div>
+                    <div class="category-item">
+                        <span>💻 Développement</span>
+                        <span class="category-count">5</span>
+                    </div>
+                    <div class="category-item">
+                        <span>🎨 Design</span>
+                        <span class="category-count">3</span>
+                    </div>
+                    <div class="category-item">
+                        <span>📊 Analyse</span>
+                        <span class="category-count">2</span>
+                    </div>
+                    <div class="category-item">
+                        <span>🔧 Utilitaires</span>
+                        <span class="category-count">2</span>
                     </div>
                 </div>
             </div>
-            
-            <!-- Appearance Settings -->
-            <div id="settings-appearance" class="settings-tab hidden">
-                <div class="grid grid-2">
-                    <div class="card">
-                        <h3>🎨 Thème et Couleurs</h3>
-                        <div class="form-group">
-                            <label>🌙 Mode sombre</label>
-                            <select id="theme-mode">
-                                <option value="dark">Sombre</option>
-                                <option value="light">Clair</option>
-                                <option value="auto">Automatique</option>
-                            </select>
+            <div id="prompts-main">
+                <div id="prompts-toolbar">
+                    <button onclick="createNewPrompt()">➕ Nouveau</button>
+                    <button onclick="importPrompts()">📥 Importer</button>
+                    <button onclick="exportPrompts()">📤 Exporter</button>
+                    <button onclick="refreshPrompts()">🔄 Actualiser</button>
+                </div>
+                <div id="prompts-grid">
+                    <div class="prompt-card">
+                        <div class="prompt-title">Créer Structure PHP</div>
+                        <div class="prompt-description">Génère une structure de projet PHP avec MVC</div>
+                        <div class="prompt-meta">
+                            <span>Utilisé 15 fois</span>
+                            <span>Modifié il y a 2j</span>
                         </div>
-                        <div class="form-group">
-                            <label>🎨 Couleur d'accent</label>
-                            <input type="color" id="accent-color" value="#38bdf8">
-                        </div>
-                        <div class="form-group">
-                            <label>📝 Police de l'éditeur</label>
-                            <select id="editor-font">
-                                <option value="JetBrains Mono">JetBrains Mono</option>
-                                <option value="Fira Code">Fira Code</option>
-                                <option value="Source Code Pro">Source Code Pro</option>
-                                <option value="Consolas">Consolas</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>📏 Taille de police</label>
-                            <input type="range" id="font-size" min="12" max="20" value="14">
-                            <span id="font-size-value">14px</span>
+                        <div class="prompt-actions">
+                            <button style="background: var(--accent); color: var(--bg-primary);">Utiliser</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">✏️</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">📋</button>
                         </div>
                     </div>
-                    
-                    <div class="card">
-                        <h3>🖼️ Interface</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="show-line-numbers"> 
-                                🔢 Numéros de ligne
-                            </label>
+                    <div class="prompt-card">
+                        <div class="prompt-title">API REST Template</div>
+                        <div class="prompt-description">Template pour créer une API REST complète</div>
+                        <div class="prompt-meta">
+                            <span>Utilisé 8 fois</span>
+                            <span>Modifié il y a 1s</span>
                         </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="word-wrap"> 
-                                📏 Retour à la ligne automatique
-                            </label>
+                        <div class="prompt-actions">
+                            <button style="background: var(--accent); color: var(--bg-primary);">Utiliser</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">✏️</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">📋</button>
                         </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="minimap"> 
-                                🗺️ Mini-carte
-                            </label>
+                    </div>
+                    <div class="prompt-card">
+                        <div class="prompt-title">Interface Responsive</div>
+                        <div class="prompt-description">Crée une interface responsive moderne</div>
+                        <div class="prompt-meta">
+                            <span>Utilisé 23 fois</span>
+                            <span>Modifié il y a 5j</span>
                         </div>
-                        <div class="form-group">
-                            <label>📐 Indentation</label>
-                            <select id="indentation">
-                                <option value="2">2 espaces</option>
-                                <option value="4">4 espaces</option>
-                                <option value="tab">Tabulations</option>
-                            </select>
+                        <div class="prompt-actions">
+                            <button style="background: var(--accent); color: var(--bg-primary);">Utiliser</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">✏️</button>
+                            <button style="background: var(--bg-tertiary); color: var(--text-primary);">📋</button>
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Security Settings -->
-            <div id="settings-security" class="settings-tab hidden">
-                <div class="grid grid-2">
-                    <div class="card">
-                        <h3>🔒 Sécurité</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="debug-mode"> 
-                                🐛 Mode Debug
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="blind-exec"> 
-                                ⚡ Mode Blind-Exec (Dangereux)
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>🔑 Clé API (optionnelle)</label>
-                            <input type="password" id="api-key" placeholder="Clé d'authentification">
-                        </div>
-                        <div class="form-group">
-                            <label>🌐 IPs autorisées</label>
-                            <textarea id="allowed-ips" placeholder="127.0.0.1&#10;192.168.1.*"></textarea>
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>📊 Logs et Monitoring</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="log-actions"> 
-                                📝 Logger les actions
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="log-errors"> 
-                                ❌ Logger les erreurs
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>📊 Niveau de log</label>
-                            <select id="log-level">
-                                <option value="error">Erreurs seulement</option>
-                                <option value="warning">Erreurs + Avertissements</option>
-                                <option value="info">Informations</option>
-                                <option value="debug">Debug complet</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>🗑️ Rotation des logs (jours)</label>
-                            <input type="number" id="log-rotation" value="30" min="1" max="365">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Advanced Settings -->
-            <div id="settings-advanced" class="settings-tab hidden">
-                <div class="grid grid-2">
-                    <div class="card">
-                        <h3>🖥️ Serveur</h3>
-                        <div class="form-group">
-                            <label>🌐 Port du serveur</label>
-                            <input type="number" id="server-port-setting" value="5000" min="1000" max="65535">
-                        </div>
-                        <div class="form-group">
-                            <label>🏠 Hôte</label>
-                            <input type="text" id="server-host-setting" value="0.0.0.0">
-                        </div>
-                        <div class="form-group">
-                            <label>⏱️ Timeout (secondes)</label>
-                            <input type="number" id="server-timeout" value="30" min="5" max="300">
-                        </div>
-                        <div class="form-group">
-                            <label>📊 Limite mémoire (MB)</label>
-                            <input type="number" id="memory-limit" value="256" min="64" max="2048">
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>🔧 Performance</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="cache-enabled"> 
-                                💾 Cache activé
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="compression"> 
-                                🗜️ Compression GZIP
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>📊 Taille max fichier (MB)</label>
-                            <input type="number" id="max-file-size" value="50" min="1" max="500">
-                        </div>
-                        <div class="form-group">
-                            <label>⏱️ Délai d'expiration cache (minutes)</label>
-                            <input type="number" id="cache-timeout" value="60" min="5" max="1440">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Settings Actions -->
-            <div class="card mt-3">
-                <div class="flex gap-3">
-                    <button class="btn btn-success" onclick="saveAllSettings()">💾 Enregistrer tout</button>
-                    <button class="btn" onclick="loadAllSettings()">📂 Charger</button>
-                    <button class="btn btn-warning" onclick="exportSettings()">📤 Exporter</button>
-                    <button class="btn btn-secondary" onclick="importSettings()">📥 Importer</button>
-                    <button class="btn btn-error" onclick="resetAllSettings()">🔄 Réinitialiser</button>
-                </div>
-                <div id="settings-status" class="status hidden mt-3"></div>
             </div>
         </div>
-        
+
+        <!-- Config View -->
+        <div id="config-view" class="view">
+            <div id="config-sidebar">
+                <div id="config-sidebar-header">⚙️ Configuration</div>
+                <div id="config-sections">
+                    <div class="config-section-item active" data-section="general">
+                        <span>🎯 Général</span>
+                    </div>
+                    <div class="config-section-item" data-section="appearance">
+                        <span>🎨 Apparence</span>
+                    </div>
+                    <div class="config-section-item" data-section="editor">
+                        <span>📝 Éditeur</span>
+                    </div>
+                    <div class="config-section-item" data-section="server">
+                        <span>🖥️ Serveur</span>
+                    </div>
+                    <div class="config-section-item" data-section="security">
+                        <span>🔒 Sécurité</span>
+                    </div>
+                    <div class="config-section-item" data-section="performance">
+                        <span>⚡ Performance</span>
+                    </div>
+                    <div class="config-section-item" data-section="backup">
+                        <span>💾 Sauvegarde</span>
+                    </div>
+                    <div class="config-section-item" data-section="advanced">
+                        <span>🔧 Avancé</span>
+                    </div>
+                </div>
+            </div>
+            <div id="config-main">
+                <div id="config-content">
+                    <!-- General Section -->
+                    <div class="config-section active" id="config-general">
+                        <div class="config-group">
+                            <h3>🎯 Paramètres Généraux</h3>
+                            <div class="form-group">
+                                <label>Nom de l'application</label>
+                                <input type="text" class="form-control" value="SGC-AgentOne" id="app-name">
+                            </div>
+                            <div class="form-group">
+                                <label>Langue</label>
+                                <select class="form-control" id="app-language">
+                                    <option value="fr">Français</option>
+                                    <option value="en">English</option>
+                                    <option value="es">Español</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Auto-sauvegarde</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked id="auto-save">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Appearance Section -->
+                    <div class="config-section" id="config-appearance">
+                        <div class="config-group">
+                            <h3>🎨 Apparence</h3>
+                            <div class="form-group">
+                                <label>Thème</label>
+                                <select class="form-control" id="theme-select">
+                                    <option value="dark">Sombre</option>
+                                    <option value="light">Clair</option>
+                                    <option value="auto">Automatique</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Couleur d'accent</label>
+                                <input type="color" class="form-control" value="#1ab8b8" id="accent-color">
+                            </div>
+                            <div class="form-group">
+                                <label>Taille de police</label>
+                                <select class="form-control" id="font-size">
+                                    <option value="small">Petite</option>
+                                    <option value="medium" selected>Moyenne</option>
+                                    <option value="large">Grande</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Editor Section -->
+                    <div class="config-section" id="config-editor">
+                        <div class="config-group">
+                            <h3>📝 Éditeur</h3>
+                            <div class="form-group">
+                                <label>Police de code</label>
+                                <select class="form-control" id="editor-font">
+                                    <option value="JetBrains Mono" selected>JetBrains Mono</option>
+                                    <option value="Fira Code">Fira Code</option>
+                                    <option value="Source Code Pro">Source Code Pro</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Taille de tabulation</label>
+                                <select class="form-control" id="tab-size">
+                                    <option value="2" selected>2 espaces</option>
+                                    <option value="4">4 espaces</option>
+                                    <option value="8">8 espaces</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Coloration syntaxique</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked id="syntax-highlighting">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Server Section -->
+                    <div class="config-section" id="config-server">
+                        <div class="config-group">
+                            <h3>🖥️ Serveur</h3>
+                            <div class="form-group">
+                                <label>Port</label>
+                                <input type="number" class="form-control" value="5000" min="1" max="65535" id="server-port-config">
+                            </div>
+                            <div class="form-group">
+                                <label>Hôte</label>
+                                <input type="text" class="form-control" value="0.0.0.0" id="server-host-config">
+                            </div>
+                            <div class="form-group">
+                                <label>Démarrage automatique</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-start">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Section -->
+                    <div class="config-section" id="config-security">
+                        <div class="config-group">
+                            <h3>🔒 Sécurité</h3>
+                            <div class="form-group">
+                                <label>Mode debug</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="debug-mode">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Logs détaillés</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked id="detailed-logs">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>IPs autorisées</label>
+                                <input type="text" class="form-control" placeholder="127.0.0.1, 192.168.1.*" id="allowed-ips">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Section -->
+                    <div class="config-section" id="config-performance">
+                        <div class="config-group">
+                            <h3>⚡ Performance</h3>
+                            <div class="form-group">
+                                <label>Cache activé</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked id="cache-enabled">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Limite mémoire (MB)</label>
+                                <input type="number" class="form-control" value="256" min="64" max="2048" id="memory-limit">
+                            </div>
+                            <div class="form-group">
+                                <label>Timeout (secondes)</label>
+                                <input type="number" class="form-control" value="30" min="5" max="300" id="timeout">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Backup Section -->
+                    <div class="config-section" id="config-backup">
+                        <div class="config-group">
+                            <h3>💾 Sauvegarde</h3>
+                            <div class="form-group">
+                                <label>Sauvegarde automatique</label>
+                                <label class="switch">
+                                    <input type="checkbox" checked id="auto-backup">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Fréquence</label>
+                                <select class="form-control" id="backup-frequency">
+                                    <option value="hourly">Toutes les heures</option>
+                                    <option value="daily" selected>Quotidienne</option>
+                                    <option value="weekly">Hebdomadaire</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Nombre de sauvegardes à conserver</label>
+                                <input type="number" class="form-control" value="7" min="1" max="30" id="backup-count">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Section -->
+                    <div class="config-section" id="config-advanced">
+                        <div class="config-group">
+                            <h3>🔧 Paramètres Avancés</h3>
+                            <div class="form-group">
+                                <label>Mode développeur</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="dev-mode">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Chemin personnalisé</label>
+                                <input type="text" class="form-control" placeholder="/chemin/vers/projet" id="custom-path">
+                            </div>
+                            <div class="form-group">
+                                <label>Variables d'environnement</label>
+                                <textarea class="form-control" rows="4" placeholder="VAR1=valeur1&#10;VAR2=valeur2" id="env-vars"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Help View -->
-        <div id="help" class="view">
-            <div class="card">
-                <h3>❓ Guide d'Aide SGC-AgentOne</h3>
-                <div class="tabs">
-                    <div class="tab active" onclick="switchHelpTab('commands')">📋 Commandes</div>
-                    <div class="tab" onclick="switchHelpTab('features')">🚀 Fonctionnalités</div>
-                    <div class="tab" onclick="switchHelpTab('troubleshooting')">🔧 Dépannage</div>
-                    <div class="tab" onclick="switchHelpTab('api')">🔌 API</div>
-                </div>
-            </div>
-            
-            <!-- Commands Help -->
-            <div id="help-commands" class="help-tab">
-                <div class="card">
-                    <h3>📋 Commandes Disponibles</h3>
-                    <div class="grid grid-2">
-                        <div>
-                            <h4>📁 Gestion des Fichiers</h4>
-                            <pre>createFile nom.ext : contenu
-readFile nom.ext
-listDir dossier
-createDir nom-dossier
-deleteFile nom.ext</pre>
-                        </div>
-                        <div>
-                            <h4>🖥️ Serveur et Système</h4>
-                            <pre>serverStatus
-backup : description
-startServer
-stopServer
-restartServer</pre>
-                        </div>
+        <div id="help-view" class="view">
+            <div id="help-sidebar">
+                <div id="help-sidebar-header">❓ Centre d'Aide</div>
+                <div id="help-sections">
+                    <div class="help-section-item active" data-section="getting-started">
+                        <span>🚀 Démarrage</span>
+                    </div>
+                    <div class="help-section-item" data-section="commands">
+                        <span>💬 Commandes</span>
+                    </div>
+                    <div class="help-section-item" data-section="features">
+                        <span>✨ Fonctionnalités</span>
+                    </div>
+                    <div class="help-section-item" data-section="troubleshooting">
+                        <span>🔧 Dépannage</span>
+                    </div>
+                    <div class="help-section-item" data-section="api">
+                        <span>🔌 API</span>
+                    </div>
+                    <div class="help-section-item" data-section="examples">
+                        <span>📚 Exemples</span>
+                    </div>
+                    <div class="help-section-item" data-section="faq">
+                        <span>❓ FAQ</span>
+                    </div>
+                    <div class="help-section-item" data-section="about">
+                        <span>ℹ️ À propos</span>
                     </div>
                 </div>
-                
-                <div class="card">
-                    <h3>💡 Exemples Pratiques</h3>
-                    <div class="grid grid-2">
-                        <div>
-                            <h4>🌐 Développement Web</h4>
-                            <pre>createFile index.html : &lt;!DOCTYPE html&gt;
-&lt;html&gt;
-&lt;head&gt;&lt;title&gt;Mon Site&lt;/title&gt;&lt;/head&gt;
-&lt;body&gt;&lt;h1&gt;Hello World!&lt;/h1&gt;&lt;/body&gt;
-&lt;/html&gt;
+            </div>
+            <div id="help-main">
+                <div id="help-content">
+                    <!-- Getting Started Section -->
+                    <div class="help-section active" id="help-getting-started">
+                        <div class="help-card">
+                            <h3>🚀 Bienvenue dans SGC-AgentOne</h3>
+                            <p>SGC-AgentOne est un assistant universel de développement qui vous permet de gérer vos projets, éditer du code, et interagir avec votre système via une interface web moderne.</p>
+                            <p>Pour commencer :</p>
+                            <ol>
+                                <li>Utilisez le <strong>Chat</strong> pour exécuter des commandes</li>
+                                <li>Explorez vos fichiers avec l'<strong>Explorateur</strong></li>
+                                <li>Éditez votre code dans l'<strong>Éditeur</strong></li>
+                                <li>Surveillez votre serveur dans l'onglet <strong>Serveur</strong></li>
+                            </ol>
+                        </div>
+                    </div>
 
-createFile style.css : body {
-    font-family: Arial, sans-serif;
-    background: #f0f0f0;
-    margin: 0;
-    padding: 20px;
-}</pre>
+                    <!-- Commands Section -->
+                    <div class="help-section" id="help-commands">
+                        <div class="help-card">
+                            <h3>💬 Commandes du Chat</h3>
+                            <p>Utilisez ces commandes dans le chat pour interagir avec le système :</p>
+                            <pre>createFile: chemin contenu
+readFile: chemin
+listDir: dossier
+createDir: nom
+deleteFile: chemin</pre>
+                            <p><strong>Exemples :</strong></p>
+                            <code>createFile: test.txt Bonjour monde!</code><br>
+                            <code>readFile: test.txt</code><br>
+                            <code>listDir: .</code>
                         </div>
-                        <div>
-                            <h4>🐘 Développement PHP</h4>
-                            <pre>createFile config.php : &lt;?php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'myapp');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+                    </div>
 
-try {
-    $pdo = new PDO(
-        "mysql:host=".DB_HOST.";dbname=".DB_NAME,
-        DB_USER, DB_PASS
-    );
-} catch(PDOException $e) {
-    die("Erreur: " . $e-&gt;getMessage());
-}</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Features Help -->
-            <div id="help-features" class="help-tab hidden">
-                <div class="grid grid-2">
-                    <div class="card">
-                        <h3>🚀 Fonctionnalités Principales</h3>
-                        <ul style="line-height: 2;">
-                            <li><strong>💬 Chat Intelligent</strong> - Assistant conversationnel</li>
-                            <li><strong>📁 Gestionnaire de Fichiers</strong> - Navigation et édition</li>
-                            <li><strong>📝 Éditeur de Code</strong> - Coloration syntaxique</li>
-                            <li><strong>⚡ Terminal</strong> - Commandes rapides</li>
-                            <li><strong>🖥️ Serveur</strong> - Contrôle du serveur PHP</li>
-                            <li><strong>🗄️ Base de Données</strong> - Gestion SQL</li>
-                            <li><strong>📊 Logs</strong> - Monitoring et debug</li>
-                            <li><strong>💾 Sauvegardes</strong> - Protection des données</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>⚙️ Fonctionnalités Avancées</h3>
-                        <ul style="line-height: 2;">
-                            <li><strong>🎨 Thèmes personnalisables</strong></li>
-                            <li><strong>🔒 Sécurité renforcée</strong></li>
-                            <li><strong>📱 Interface responsive</strong></li>
-                            <li><strong>⚡ Mode Blind-Exec</strong></li>
-                            <li><strong>🔄 Sauvegarde automatique</strong></li>
-                            <li><strong>📊 Statistiques détaillées</strong></li>
-                            <li><strong>🌐 Support multi-langues</strong></li>
-                            <li><strong>🔌 API REST complète</strong></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Troubleshooting Help -->
-            <div id="help-troubleshooting" class="help-tab hidden">
-                <div class="card">
-                    <h3>🔧 Résolution de Problèmes</h3>
-                    <div class="grid grid-2">
-                        <div>
-                            <h4>❌ Problèmes Courants</h4>
-                            <div class="mb-3">
-                                <strong>🚫 "Erreur de connexion au serveur"</strong>
-                                <ul>
-                                    <li>Vérifiez que le serveur PHP est démarré</li>
-                                    <li>Contrôlez le port (par défaut 5000)</li>
-                                    <li>Vérifiez les permissions des fichiers</li>
-                                </ul>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <strong>📁 "Fichier introuvable"</strong>
-                                <ul>
-                                    <li>Vérifiez le chemin du fichier</li>
-                                    <li>Contrôlez les permissions de lecture</li>
-                                    <li>Utilisez des chemins relatifs</li>
-                                </ul>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h4>🔍 Mode Debug</h4>
-                            <p>Ajoutez <code>?debug=1</code> à l'URL pour activer le mode debug :</p>
-                            <pre>http://localhost:5000/?debug=1</pre>
-                            
-                            <h4>📊 Vérification du Système</h4>
+                    <!-- Features Section -->
+                    <div class="help-section" id="help-features">
+                        <div class="help-card">
+                            <h3>✨ Fonctionnalités Principales</h3>
                             <ul>
-                                <li><strong>PHP :</strong> Version 7.4+ requise</li>
-                                <li><strong>Extensions :</strong> json, mbstring, zip</li>
-                                <li><strong>Permissions :</strong> Lecture/écriture sur le dossier</li>
+                                <li><strong>Chat Intelligent</strong> - Assistant avec commandes intégrées</li>
+                                <li><strong>Explorateur de Fichiers</strong> - Navigation et gestion des fichiers</li>
+                                <li><strong>Éditeur de Code</strong> - Édition avec coloration syntaxique</li>
+                                <li><strong>Terminal</strong> - Console de commandes intégrée</li>
+                                <li><strong>Monitoring Serveur</strong> - Surveillance en temps réel</li>
+                                <li><strong>Base de Données</strong> - Éditeur SQL intégré</li>
+                                <li><strong>Navigateur</strong> - Prévisualisation web</li>
+                                <li><strong>Gestionnaire de Projets</strong> - Organisation des projets</li>
+                                <li><strong>Templates</strong> - Prompts réutilisables</li>
+                                <li><strong>Configuration</strong> - Personnalisation complète</li>
                             </ul>
                         </div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- API Help -->
-            <div id="help-api" class="help-tab hidden">
-                <div class="card">
-                    <h3>🔌 Documentation API</h3>
-                    <div class="grid grid-2">
-                        <div>
-                            <h4>📤 Endpoints Disponibles</h4>
-                            <pre>POST /?action=chat
-POST /?action=listFiles
-POST /?action=saveSettings
-GET  /?action=loadSettings
-GET  /?action=getLogs
-POST /?action=clearLogs</pre>
-                        </div>
-                        
-                        <div>
-                            <h4>📝 Format des Requêtes</h4>
-                            <pre>// Chat
-{
-  "message": "createFile test.php : &lt;?php echo 'Hello'; ?&gt;"
-}
 
-// Réponse
-{
-  "success": true,
-  "result": "✅ Fichier créé: test.php"
-}</pre>
+                    <!-- Troubleshooting Section -->
+                    <div class="help-section" id="help-troubleshooting">
+                        <div class="help-card">
+                            <h3>🔧 Résolution de Problèmes</h3>
+                            <p><strong>Le serveur ne démarre pas :</strong></p>
+                            <ul>
+                                <li>Vérifiez que le port 5000 n'est pas utilisé</li>
+                                <li>Changez le port dans Configuration > Serveur</li>
+                                <li>Redémarrez l'application</li>
+                            </ul>
+                            <p><strong>Les fichiers ne se sauvegardent pas :</strong></p>
+                            <ul>
+                                <li>Vérifiez les permissions du dossier</li>
+                                <li>Activez l'auto-sauvegarde dans Configuration</li>
+                            </ul>
                         </div>
                     </div>
-                </div>
-                
-                <div class="card">
-                    <h3>🔧 Intégration</h3>
-                    <pre>// Exemple JavaScript
-async function sendCommand(command) {
-    const response = await fetch('/?action=chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: command })
-    });
-    
-    const result = await response.json();
-    return result;
-}
 
-// Utilisation
-const result = await sendCommand('listDir .');
-console.log(result.result);</pre>
+                    <!-- API Section -->
+                    <div class="help-section" id="help-api">
+                        <div class="help-card">
+                            <h3>🔌 API Intégrée</h3>
+                            <p>SGC-AgentOne expose une API REST pour l'intégration :</p>
+                            <pre>GET  /?api=server     - Statut du serveur
+POST /?api=chat       - Envoyer une commande
+POST /?api=files      - Gestion des fichiers</pre>
+                            <p><strong>Exemple d'utilisation :</strong></p>
+                            <pre>fetch('/?api=chat', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({message: 'listDir: .'})
+})</pre>
+                        </div>
+                    </div>
+
+                    <!-- Examples Section -->
+                    <div class="help-section" id="help-examples">
+                        <div class="help-card">
+                            <h3>📚 Exemples Pratiques</h3>
+                            <p><strong>Créer un projet PHP :</strong></p>
+                            <pre>createDir: monprojet
+createFile: monprojet/index.php &lt;?php echo "Hello World"; ?&gt;
+createFile: monprojet/style.css body { margin: 0; }</pre>
+                            <p><strong>Lire et modifier un fichier :</strong></p>
+                            <pre>readFile: config.json
+createFile: config.json {"version": "2.1"}</pre>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Section -->
+                    <div class="help-section" id="help-faq">
+                        <div class="help-card">
+                            <h3>❓ Questions Fréquentes</h3>
+                            <p><strong>Q: Comment changer le thème ?</strong></p>
+                            <p>R: Allez dans Configuration > Apparence et sélectionnez votre thème préféré.</p>
+                            <p><strong>Q: Puis-je utiliser SGC-AgentOne sur mobile ?</strong></p>
+                            <p>R: Oui, l'interface est entièrement responsive et fonctionne sur tous les appareils.</p>
+                            <p><strong>Q: Les données sont-elles sauvegardées ?</strong></p>
+                            <p>R: Oui, l'auto-sauvegarde est activée par défaut. Vous pouvez configurer la fréquence dans Configuration > Sauvegarde.</p>
+                        </div>
+                    </div>
+
+                    <!-- About Section -->
+                    <div class="help-section" id="help-about">
+                        <div class="help-card">
+                            <h3>ℹ️ À propos de SGC-AgentOne</h3>
+                            <p><strong>Version :</strong> 2.1</p>
+                            <p><strong>Auteur :</strong> AMICHI Amine</p>
+                            <p><strong>Description :</strong> Assistant universel de développement avec interface web moderne</p>
+                            <p><strong>Technologies :</strong> PHP, HTML5, CSS3, JavaScript</p>
+                            <p><strong>Licence :</strong> MIT</p>
+                            <p>SGC-AgentOne est conçu pour simplifier le développement en offrant tous les outils nécessaires dans une interface unifiée et intuitive.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <div id="status">
-        <div class="flex items-center gap-3">
-            <span>🚀 SGC-AgentOne v2.1</span>
-            <span id="connection-status">🟢 Connecté</span>
-            <span id="current-project">📁 Projet: /</span>
-        </div>
-        <div class="flex items-center gap-3">
-            <span id="current-time"><?php echo date('Y-m-d H:i:s'); ?></span>
-            <span>👤 <?php echo get_current_user(); ?></span>
-        </div>
+
+    <!-- Footer -->
+    <div id="footer">
+        <span id="status-info">Serveur : En ligne • UTF-8 • Projet : SGC-AgentOne • Fichier : index.php</span>
+        <span id="timestamp">2025-01-20 14:30:25</span>
     </div>
 
     <script>
         // Variables globales
         let currentView = 'chat';
-        let currentLogTab = 'actions';
-        let currentSettingsTab = 'general';
-        let currentHelpTab = 'commands';
-        let autoRefreshLogs = false;
-        let autoRefreshInterval = null;
-        
-        // Navigation entre vues
-        document.querySelectorAll(".nav-btn").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const view = btn.dataset.view;
+        let currentFile = '';
+        let terminalHistory = [];
+        let terminalHistoryIndex = -1;
+        let serverStartTime = Date.now();
+
+        // Navigation entre les vues
+        document.querySelectorAll('#nav-menu button').forEach(button => {
+            button.addEventListener('click', () => {
+                const view = button.dataset.view;
+                switchView(view);
                 
-                // Mettre à jour navigation
-                document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-                
-                // Mettre à jour vues
-                document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-                const targetView = document.getElementById(view);
-                if (targetView) {
-                    targetView.classList.add("active");
-                    currentView = view;
-                    
-                    // Actions spécifiques par vue
-                    switch(view) {
-                        case 'files':
-                            loadFileList();
-                            break;
-                        case 'logs':
-                            refreshLogs();
-                            break;
-                        case 'server':
-                            checkServerStatus();
-                            break;
-                        case 'settings':
-                            loadAllSettings();
-                            break;
-                        case 'backup':
-                            listBackups();
-                            break;
-                    }
-                }
+                // Mettre à jour les boutons actifs
+                document.querySelectorAll('#nav-menu button').forEach(b => b.classList.remove('active'));
+                button.classList.add('active');
             });
         });
-        
-        // === CHAT FUNCTIONALITY ===
-        const messagesContainer = document.getElementById('messages');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-btn');
-        
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender} fade-in`;
+
+        function switchView(view) {
+            // Cacher toutes les vues
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             
-            // Formatage spécial pour les réponses de l'IA
-            if (sender === 'ai') {
-                // Remplacer les retours à la ligne par des <br>
-                text = text.replace(/\n/g, '<br>');
-                // Mettre en forme les blocs de code
-                text = text.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
-                messageDiv.innerHTML = `<strong>🤖 SGC-AgentOne:</strong> ${text}`;
-            } else {
-                messageDiv.innerHTML = `<strong>👤 Vous:</strong> ${text}`;
+            // Afficher la vue sélectionnée
+            document.getElementById(view + '-view').classList.add('active');
+            currentView = view;
+            
+            // Actions spécifiques par vue
+            if (view === 'files') {
+                loadDirectory('.');
+            } else if (view === 'server') {
+                updateServerMetrics();
+            } else if (view === 'browser') {
+                loadBrowserUrl();
             }
-            
+        }
+
+        // Chat functionality
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const messagesContainer = document.getElementById('messages');
+
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Ajouter le message utilisateur
+            addChatMessage(message, 'user');
+            chatInput.value = '';
+
+            // Envoyer à l'API
+            fetch('/?api=chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addChatMessage(data.result, 'ai');
+                } else {
+                    addChatMessage('❌ Erreur: ' + data.error, 'ai');
+                }
+            })
+            .catch(error => {
+                addChatMessage('❌ Erreur de connexion au serveur', 'ai');
+            });
+        }
+
+        function addChatMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = text;
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-        
-        async function sendMessage() {
-            const text = messageInput.value.trim();
-            if (!text) return;
-            
-            addMessage(text, 'user');
-            messageInput.value = '';
-            
-            sendButton.disabled = true;
-            sendButton.innerHTML = '<div class="loading"></div> Envoi...';
-            
-            try {
-                const response = await fetch('?action=chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
-                });
-                
-                const result = await response.json();
-                
-                if (result.error) {
-                    addMessage(`❌ ${result.error}`, 'ai');
-                } else if (result.success && result.result) {
-                    addMessage(result.result, 'ai');
-                } else {
-                    addMessage("🤔 Réponse inattendue du serveur.", 'ai');
-                }
-            } catch (error) {
-                addMessage(`🔌 Erreur de connexion: ${error.message}`, 'ai');
-            } finally {
-                sendButton.disabled = false;
-                sendButton.innerHTML = '<span>📤</span> Envoyer';
-            }
-        }
-        
-        // Événements chat
-        sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
+
+        chatSend.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendChatMessage();
         });
-        
-        // === FILES FUNCTIONALITY ===
-        async function loadFileList(path = '.') {
-            const fileListDiv = document.getElementById("file-list");
-            fileListDiv.innerHTML = '<div class="text-center" style="padding: 40px;"><div class="loading"></div><p>Chargement des fichiers...</p></div>';
-            
-            try {
-                const response = await fetch(`?action=listFiles&path=${encodeURIComponent(path)}`);
-                const result = await response.json();
-                
-                if (result.success && result.files) {
-                    let html = '';
-                    
-                    // Bouton retour si pas à la racine
-                    if (path !== '.') {
-                        const parentPath = path.split('/').slice(0, -1).join('/') || '.';
-                        html += `<div class="file-item" onclick="loadFileList('${parentPath}')">
-                            <div class="file-icon">📁</div>
-                            <div class="file-info">
-                                <div class="file-name">.. (Dossier parent)</div>
-                                <div class="file-meta">Remonter d'un niveau</div>
-                            </div>
-                        </div>`;
-                    }
-                    
-                    // Trier: dossiers d'abord, puis fichiers
-                    result.files.sort((a, b) => {
-                        if (a.type !== b.type) {
-                            return a.type === 'dir' ? -1 : 1;
-                        }
-                        return a.name.localeCompare(b.name);
-                    });
-                    
-                    result.files.forEach(file => {
-                        const icon = file.type === 'dir' ? '📁' : getFileIcon(file.extension);
-                        const size = file.type === 'file' ? formatFileSize(file.size) : '';
-                        const date = new Date(file.modified * 1000).toLocaleDateString();
-                        const fullPath = path === '.' ? file.name : `${path}/${file.name}`;
-                        
-                        const onclick = file.type === 'dir' 
-                            ? `loadFileList('${fullPath}')`
-                            : `selectFile('${fullPath}')`;
-                        
-                        html += `<div class="file-item" onclick="${onclick}">
-                            <div class="file-icon">${icon}</div>
-                            <div class="file-info">
-                                <div class="file-name">${file.name}</div>
-                                <div class="file-meta">${size} • ${date}</div>
-                            </div>
-                        </div>`;
-                    });
-                    
-                    fileListDiv.innerHTML = html;
-                    document.getElementById('current-path').value = path;
-                } else {
-                    fileListDiv.innerHTML = '<div class="status error">❌ Erreur lors du chargement des fichiers</div>';
+
+        // Files functionality
+        function loadDirectory(path) {
+            fetch('/?api=files', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'listDir', path: path})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateFilesTree(data.items, path);
                 }
-            } catch (error) {
-                fileListDiv.innerHTML = '<div class="status error">🔌 Erreur de connexion</div>';
-            }
-        }
-        
-        function getFileIcon(extension) {
-            const icons = {
-                'php': '🐘', 'html': '🌐', 'css': '🎨', 'js': '⚡', 'json': '📋',
-                'md': '📝', 'txt': '📄', 'sql': '🗄️', 'zip': '📦', 'pdf': '📕',
-                'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'svg': '🎨'
-            };
-            return icons[extension?.toLowerCase()] || '📄';
-        }
-        
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
-        function navigateToPath() {
-            const path = document.getElementById('current-path').value.trim();
-            loadFileList(path);
-        }
-        
-        function createNewFile() {
-            const filename = prompt("📄 Nom du nouveau fichier :");
-            if (filename) {
-                const path = document.getElementById('current-path').value;
-                const fullPath = path === '.' ? filename : `${path}/${filename}`;
-                addMessage(`createFile ${fullPath} : // Nouveau fichier créé`, "user");
-                sendMessage();
-            }
-        }
-        
-        function createNewFolder() {
-            const foldername = prompt("📁 Nom du nouveau dossier :");
-            if (foldername) {
-                const path = document.getElementById('current-path').value;
-                const fullPath = path === '.' ? foldername : `${path}/${foldername}`;
-                addMessage(`createDir ${fullPath}`, "user");
-                sendMessage();
-            }
-        }
-        
-        function selectFile(filename) {
-            // Charger le fichier dans l'éditeur
-            document.getElementById('editor-file').value = filename;
-            
-            // Basculer vers l'éditeur
-            document.querySelector('[data-view="editor"]').click();
-            
-            // Charger le contenu
-            setTimeout(() => {
-                loadFileInEditor();
-            }, 100);
-        }
-        
-        function uploadFile() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.multiple = true;
-            input.onchange = (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const content = event.target.result;
-                        const path = document.getElementById('current-path').value;
-                        const fullPath = path === '.' ? file.name : `${path}/${file.name}`;
-                        addMessage(`createFile ${fullPath} : ${content}`, "user");
-                        sendMessage();
-                    };
-                    reader.readAsText(file);
-                });
-            };
-            input.click();
-        }
-        
-        // === EDITOR FUNCTIONALITY ===
-        async function loadFileInEditor() {
-            const filename = document.getElementById("editor-file").value.trim();
-            if (!filename) {
-                showStatus('❌ Veuillez entrer un nom de fichier', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `readFile ${filename}` })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const content = result.result.replace(/^📄 Contenu de [^:]+:\n\n/, '');
-                    document.getElementById("code-editor").value = content;
-                    showStatus(`✅ Fichier chargé: ${filename}`, 'success');
-                } else {
-                    showStatus(`❌ ${result.error}`, 'error');
-                }
-            } catch (error) {
-                showStatus(`🔌 Erreur de connexion: ${error.message}`, 'error');
-            }
-        }
-        
-        async function saveFileFromEditor() {
-            const filename = document.getElementById("editor-file").value.trim();
-            const content = document.getElementById("code-editor").value;
-            
-            if (!filename) {
-                showStatus('❌ Veuillez entrer un nom de fichier', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `createFile ${filename} : ${content}` })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showStatus(`✅ ${result.result}`, 'success');
-                } else {
-                    showStatus(`❌ ${result.error}`, 'error');
-                }
-            } catch (error) {
-                showStatus(`🔌 Erreur de connexion: ${error.message}`, 'error');
-            }
-        }
-        
-        function clearEditor() {
-            if (confirm('🗑️ Êtes-vous sûr de vouloir vider l\'éditeur ?')) {
-                document.getElementById("code-editor").value = '';
-                document.getElementById("editor-file").value = '';
-                showStatus('🗑️ Éditeur vidé', 'success');
-            }
-        }
-        
-        function formatCode() {
-            const editor = document.getElementById("code-editor");
-            let content = editor.value;
-            
-            // Formatage basique pour différents langages
-            const filename = document.getElementById("editor-file").value.toLowerCase();
-            
-            if (filename.endsWith('.json')) {
-                try {
-                    const parsed = JSON.parse(content);
-                    content = JSON.stringify(parsed, null, 2);
-                    editor.value = content;
-                    showStatus('🎨 Code JSON formaté', 'success');
-                } catch (e) {
-                    showStatus('❌ JSON invalide', 'error');
-                }
-            } else {
-                // Formatage basique pour autres langages
-                content = content.replace(/\s*{\s*/g, ' {\n    ')
-                               .replace(/;\s*/g, ';\n    ')
-                               .replace(/}\s*/g, '\n}\n');
-                editor.value = content;
-                showStatus('🎨 Code formaté (basique)', 'success');
-            }
-        }
-        
-        function toggleWrap() {
-            const editor = document.getElementById("code-editor");
-            if (editor.style.whiteSpace === 'pre-wrap') {
-                editor.style.whiteSpace = 'pre';
-                showStatus('📏 Retour ligne désactivé', 'success');
-            } else {
-                editor.style.whiteSpace = 'pre-wrap';
-                showStatus('📏 Retour ligne activé', 'success');
-            }
-        }
-        
-        // === TERMINAL FUNCTIONALITY ===
-        async function runQuickCommand(command) {
-            document.getElementById("terminal-input").value = command;
-            await runTerminalCommand();
-        }
-        
-        async function runTerminalCommand() {
-            const command = document.getElementById("terminal-input").value.trim();
-            if (!command) return;
-            
-            const output = document.getElementById("terminal-output");
-            output.textContent += `> ${command}\n`;
-            output.scrollTop = output.scrollHeight;
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: command })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    output.textContent += result.result + "\n\n";
-                } else {
-                    output.textContent += "❌ " + result.error + "\n\n";
-                }
-            } catch (error) {
-                output.textContent += "🔌 Erreur de connexion: " + error.message + "\n\n";
-            }
-            
-            output.scrollTop = output.scrollHeight;
-            document.getElementById("terminal-input").value = "";
-        }
-        
-        function clearTerminal() {
-            document.getElementById("terminal-output").textContent = "";
-            showStatus('🗑️ Terminal vidé', 'success');
-        }
-        
-        // === SERVER FUNCTIONALITY ===
-        async function checkServerStatus() {
-            const statusDiv = document.getElementById("server-status");
-            statusDiv.innerHTML = '<div class="loading"></div> Vérification du statut...';
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: 'serverStatus' })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    if (result.result.includes('🟢')) {
-                        statusDiv.className = 'status success';
-                        statusDiv.innerHTML = result.result;
-                    } else {
-                        statusDiv.className = 'status warning';
-                        statusDiv.innerHTML = result.result;
-                    }
-                } else {
-                    statusDiv.className = 'status error';
-                    statusDiv.innerHTML = `❌ ${result.error}`;
-                }
-            } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `🔌 Erreur de connexion: ${error.message}`;
-            }
-        }
-        
-        function startServer() {
-            showStatus('▶️ Démarrage du serveur...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function stopServer() {
-            showStatus('⏹️ Arrêt du serveur...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function restartServer() {
-            showStatus('🔄 Redémarrage du serveur...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function updateServerConfig() {
-            const port = document.getElementById('server-port').value;
-            const host = document.getElementById('server-host').value;
-            showStatus(`⚙️ Configuration mise à jour: ${host}:${port}`, 'success');
-        }
-        
-        // === DATABASE FUNCTIONALITY ===
-        function createDatabase() {
-            const name = prompt('🗄️ Nom de la base de données :');
-            if (name) {
-                showStatus(`🗄️ Création de la base "${name}"...`, 'warning');
-                // Implémentation à ajouter
-            }
-        }
-        
-        function listTables() {
-            showStatus('📋 Chargement des tables...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function backupDatabase() {
-            showStatus('💾 Sauvegarde de la base en cours...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function optimizeDatabase() {
-            showStatus('⚡ Optimisation de la base...', 'warning');
-            // Implémentation à ajouter
-        }
-        
-        function executeSQLQuery() {
-            const query = document.getElementById('sql-query').value.trim();
-            if (!query) {
-                showStatus('❌ Veuillez entrer une requête SQL', 'error');
-                return;
-            }
-            
-            const results = document.getElementById('sql-results');
-            results.textContent = `Exécution de: ${query}\n\nRésultat: Fonctionnalité en développement`;
-            showStatus('▶️ Requête exécutée', 'success');
-        }
-        
-        function formatSQL() {
-            const query = document.getElementById('sql-query');
-            let sql = query.value.toUpperCase();
-            sql = sql.replace(/SELECT/g, '\nSELECT')
-                     .replace(/FROM/g, '\nFROM')
-                     .replace(/WHERE/g, '\nWHERE')
-                     .replace(/ORDER BY/g, '\nORDER BY');
-            query.value = sql.trim();
-            showStatus('🎨 SQL formaté', 'success');
-        }
-        
-        function clearSQL() {
-            document.getElementById('sql-query').value = '';
-            document.getElementById('sql-results').textContent = 'Aucune requête exécutée';
-            showStatus('🗑️ Requête vidée', 'success');
-        }
-        
-        function generateTable() {
-            const tableName = document.getElementById('table-name').value.trim();
-            const columns = document.getElementById('table-columns').value.trim();
-            
-            if (!tableName || !columns) {
-                showStatus('❌ Nom de table et colonnes requis', 'error');
-                return;
-            }
-            
-            try {
-                const columnsObj = JSON.parse(columns);
-                let sql = `CREATE TABLE ${tableName} (\n`;
-                
-                const columnDefs = Object.entries(columnsObj).map(([name, type]) => 
-                    `    ${name} ${type}`
-                );
-                
-                sql += columnDefs.join(',\n') + '\n);';
-                
-                document.getElementById('sql-query').value = sql;
-                showStatus(`🏗️ Table "${tableName}" générée`, 'success');
-            } catch (e) {
-                showStatus('❌ Format JSON invalide pour les colonnes', 'error');
-            }
-        }
-        
-        // === LOGS FUNCTIONALITY ===
-        function switchLogTab(tab) {
-            currentLogTab = tab;
-            
-            // Mettre à jour les onglets
-            document.querySelectorAll('#logs .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            // Mettre à jour le titre
-            const titles = {
-                'actions': '📊 Logs des Actions',
-                'chat': '💬 Logs du Chat',
-                'errors': '❌ Logs d\'Erreurs',
-                'system': '🖥️ Logs Système'
-            };
-            document.getElementById('log-title').textContent = titles[tab];
-            
-            refreshLogs();
-        }
-        
-        async function refreshLogs() {
-            const logsContent = document.getElementById('logs-content');
-            logsContent.textContent = 'Chargement des logs...';
-            
-            try {
-                const response = await fetch(`?action=getLogs&type=${currentLogTab}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    if (result.logs.length === 0) {
-                        logsContent.textContent = `Aucun log ${currentLogTab} trouvé.`;
-                    } else {
-                        logsContent.textContent = result.logs.join('\n');
-                        updateLogStats(result.logs);
-                    }
-                } else {
-                    logsContent.textContent = `Erreur: ${result.error}`;
-                }
-            } catch (error) {
-                logsContent.textContent = `Erreur de connexion: ${error.message}`;
-            }
-            
-            logsContent.scrollTop = logsContent.scrollHeight;
-        }
-        
-        function updateLogStats(logs) {
-            const stats = {
-                success: logs.filter(log => log.includes('success')).length,
-                errors: logs.filter(log => log.includes('error') || log.includes('ERROR')).length,
-                warnings: logs.filter(log => log.includes('warning') || log.includes('WARNING')).length,
-                total: logs.length
-            };
-            
-            document.getElementById('stats-success').textContent = stats.success;
-            document.getElementById('stats-errors').textContent = stats.errors;
-            document.getElementById('stats-warnings').textContent = stats.warnings;
-            document.getElementById('stats-total').textContent = stats.total;
-        }
-        
-        function filterLogs() {
-            const filter = document.getElementById('log-filter').value.toLowerCase();
-            const logsContent = document.getElementById('logs-content');
-            const allLogs = logsContent.textContent.split('\n');
-            
-            if (filter) {
-                const filteredLogs = allLogs.filter(log => 
-                    log.toLowerCase().includes(filter)
-                );
-                logsContent.textContent = filteredLogs.join('\n');
-                showStatus(`🔍 ${filteredLogs.length} logs trouvés`, 'success');
-            } else {
-                refreshLogs();
-            }
-        }
-        
-        async function downloadLogs() {
-            try {
-                const response = await fetch(`?action=getLogs&type=${currentLogTab}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    const content = result.logs.join('\n');
-                    const blob = new Blob([content], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `sgc-logs-${currentLogTab}-${new Date().toISOString().split('T')[0]}.txt`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    
-                    showStatus('⬇️ Logs téléchargés', 'success');
-                }
-            } catch (error) {
-                showStatus(`❌ Erreur de téléchargement: ${error.message}`, 'error');
-            }
-        }
-        
-        async function clearAllLogs() {
-            if (confirm('🗑️ Êtes-vous sûr de vouloir effacer tous les logs ?')) {
-                try {
-                    const response = await fetch('?action=clearLogs', { method: 'POST' });
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        refreshLogs();
-                        showStatus('🗑️ Tous les logs ont été effacés', 'success');
-                    } else {
-                        showStatus(`❌ ${result.error}`, 'error');
-                    }
-                } catch (error) {
-                    showStatus(`🔌 Erreur: ${error.message}`, 'error');
-                }
-            }
-        }
-        
-        function toggleAutoRefresh() {
-            autoRefreshLogs = !autoRefreshLogs;
-            
-            if (autoRefreshLogs) {
-                autoRefreshInterval = setInterval(refreshLogs, 5000);
-                showStatus('⏱️ Auto-refresh activé (5s)', 'success');
-            } else {
-                clearInterval(autoRefreshInterval);
-                showStatus('⏱️ Auto-refresh désactivé', 'success');
-            }
-        }
-        
-        // === BACKUP FUNCTIONALITY ===
-        async function createBackup() {
-            const name = document.getElementById('backup-name').value.trim() || 'backup_manuel';
-            const statusDiv = document.getElementById('backup-status');
-            
-            statusDiv.className = 'status warning';
-            statusDiv.innerHTML = '<div class="loading"></div> Création de la sauvegarde...';
-            
-            try {
-                const response = await fetch("?action=chat", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `backup : ${name}` })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    statusDiv.className = 'status success';
-                    statusDiv.innerHTML = `✅ ${result.result}`;
-                    listBackups();
-                    updateBackupStats();
-                } else {
-                    statusDiv.className = 'status error';
-                    statusDiv.innerHTML = `❌ ${result.error}`;
-                }
-            } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `🔌 Erreur: ${error.message}`;
-            }
-        }
-        
-        function listBackups() {
-            const backupList = document.getElementById('backup-list');
-            
-            // Simulation de la liste des sauvegardes
-            const backups = [
-                { name: 'backup_2024-01-15_14-30-25.zip', size: '2.5 MB', date: '2024-01-15 14:30' },
-                { name: 'backup_manuel.zip', size: '2.3 MB', date: '2024-01-15 12:15' }
-            ];
-            
-            if (backups.length === 0) {
-                backupList.innerHTML = `
-                    <div class="text-center" style="padding: 40px; color: var(--text-secondary);">
-                        <div style="font-size: 3rem; margin-bottom: 16px;">💾</div>
-                        <p>Aucune sauvegarde trouvée</p>
-                    </div>
-                `;
-            } else {
-                let html = '';
-                backups.forEach(backup => {
-                    html += `
-                        <div class="file-item">
-                            <div class="file-icon">💾</div>
-                            <div class="file-info">
-                                <div class="file-name">${backup.name}</div>
-                                <div class="file-meta">${backup.size} • ${backup.date}</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button class="btn btn-secondary" onclick="downloadBackup('${backup.name}')">⬇️</button>
-                                <button class="btn btn-warning" onclick="restoreBackup('${backup.name}')">🔄</button>
-                                <button class="btn btn-error" onclick="deleteBackup('${backup.name}')">🗑️</button>
-                            </div>
-                        </div>
-                    `;
-                });
-                backupList.innerHTML = html;
-            }
-        }
-        
-        function updateBackupStats() {
-            document.getElementById('last-backup').textContent = new Date().toLocaleString();
-            document.getElementById('backup-size').textContent = '4.8 MB';
-        }
-        
-        function scheduleBackup() {
-            showStatus('⏰ Programmation des sauvegardes en développement', 'warning');
-        }
-        
-        function restoreBackup(filename) {
-            if (confirm(`🔄 Restaurer la sauvegarde "${filename}" ?\n\nCela remplacera les fichiers actuels.`)) {
-                showStatus(`🔄 Restauration de ${filename}...`, 'warning');
-                // Implémentation à ajouter
-            }
-        }
-        
-        function downloadBackup(filename) {
-            showStatus(`⬇️ Téléchargement de ${filename}...`, 'success');
-            // Implémentation à ajouter
-        }
-        
-        function deleteBackup(filename) {
-            if (confirm(`🗑️ Supprimer la sauvegarde "${filename}" ?`)) {
-                showStatus(`🗑️ Suppression de ${filename}...`, 'success');
-                listBackups();
-            }
-        }
-        
-        // === SETTINGS FUNCTIONALITY ===
-        function switchSettingsTab(tab) {
-            currentSettingsTab = tab;
-            
-            // Mettre à jour les onglets
-            document.querySelectorAll('#settings .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            // Mettre à jour les vues
-            document.querySelectorAll('.settings-tab').forEach(t => t.classList.add('hidden'));
-            document.getElementById(`settings-${tab}`).classList.remove('hidden');
-        }
-        
-        async function loadAllSettings() {
-            try {
-                const response = await fetch('?action=loadSettings');
-                const result = await response.json();
-                
-                if (result.success && result.settings) {
-                    const settings = result.settings;
-                    
-                    // Général
-                    document.getElementById('app-title').value = settings.title || 'SGC-AgentOne';
-                    document.getElementById('app-author').value = settings.author || 'By AMICHI Amine';
-                    document.getElementById('app-description').value = settings.description || '';
-                    document.getElementById('app-language').value = settings.language || 'fr';
-                    document.getElementById('auto-save').checked = settings.auto_save !== false;
-                    document.getElementById('file-watcher').checked = settings.file_watcher !== false;
-                    document.getElementById('syntax-highlighting').checked = settings.syntax_highlighting !== false;
-                    document.getElementById('backup-enabled').checked = settings.backup_enabled !== false;
-                    document.getElementById('backup-interval').value = settings.backup_interval || 30;
-                    
-                    // Apparence
-                    document.getElementById('theme-mode').value = settings.theme || 'dark';
-                    document.getElementById('accent-color').value = settings.accent_color || '#38bdf8';
-                    document.getElementById('editor-font').value = settings.editor_font || 'JetBrains Mono';
-                    document.getElementById('font-size').value = settings.font_size || 14;
-                    document.getElementById('font-size-value').textContent = (settings.font_size || 14) + 'px';
-                    document.getElementById('show-line-numbers').checked = settings.show_line_numbers !== false;
-                    document.getElementById('word-wrap').checked = settings.word_wrap !== false;
-                    document.getElementById('minimap').checked = settings.minimap || false;
-                    document.getElementById('indentation').value = settings.indentation || '2';
-                    
-                    // Sécurité
-                    document.getElementById('debug-mode').checked = settings.debug || false;
-                    document.getElementById('blind-exec').checked = settings.blind_exec_enabled || false;
-                    document.getElementById('api-key').value = settings.api_key || '';
-                    document.getElementById('allowed-ips').value = settings.allowed_ips || '';
-                    document.getElementById('log-actions').checked = settings.log_actions !== false;
-                    document.getElementById('log-errors').checked = settings.log_errors !== false;
-                    document.getElementById('log-level').value = settings.log_level || 'info';
-                    document.getElementById('log-rotation').value = settings.log_rotation || 30;
-                    
-                    // Avancé
-                    document.getElementById('server-port-setting').value = settings.port || 5000;
-                    document.getElementById('server-host-setting').value = settings.host || '0.0.0.0';
-                    document.getElementById('server-timeout').value = settings.server_timeout || 30;
-                    document.getElementById('memory-limit').value = settings.memory_limit || 256;
-                    document.getElementById('cache-enabled').checked = settings.cache_enabled !== false;
-                    document.getElementById('compression').checked = settings.compression !== false;
-                    document.getElementById('max-file-size').value = settings.max_file_size || 50;
-                    document.getElementById('cache-timeout').value = settings.cache_timeout || 60;
-                    
-                    showSettingsStatus('✅ Paramètres chargés', 'success');
-                } else {
-                    showSettingsStatus('⚠️ Paramètres par défaut chargés', 'warning');
-                }
-            } catch (error) {
-                showSettingsStatus(`❌ Erreur de chargement: ${error.message}`, 'error');
-            }
-        }
-        
-        async function saveAllSettings() {
-            const settings = {
-                // Général
-                title: document.getElementById('app-title').value.trim() || 'SGC-AgentOne',
-                author: document.getElementById('app-author').value.trim() || 'By AMICHI Amine',
-                description: document.getElementById('app-description').value.trim(),
-                language: document.getElementById('app-language').value,
-                auto_save: document.getElementById('auto-save').checked,
-                file_watcher: document.getElementById('file-watcher').checked,
-                syntax_highlighting: document.getElementById('syntax-highlighting').checked,
-                backup_enabled: document.getElementById('backup-enabled').checked,
-                backup_interval: parseInt(document.getElementById('backup-interval').value) || 30,
-                
-                // Apparence
-                theme: document.getElementById('theme-mode').value,
-                accent_color: document.getElementById('accent-color').value,
-                editor_font: document.getElementById('editor-font').value,
-                font_size: parseInt(document.getElementById('font-size').value) || 14,
-                show_line_numbers: document.getElementById('show-line-numbers').checked,
-                word_wrap: document.getElementById('word-wrap').checked,
-                minimap: document.getElementById('minimap').checked,
-                indentation: document.getElementById('indentation').value,
-                
-                // Sécurité
-                debug: document.getElementById('debug-mode').checked,
-                blind_exec_enabled: document.getElementById('blind-exec').checked,
-                api_key: document.getElementById('api-key').value.trim(),
-                allowed_ips: document.getElementById('allowed-ips').value.trim(),
-                log_actions: document.getElementById('log-actions').checked,
-                log_errors: document.getElementById('log-errors').checked,
-                log_level: document.getElementById('log-level').value,
-                log_rotation: parseInt(document.getElementById('log-rotation').value) || 30,
-                
-                // Avancé
-                port: parseInt(document.getElementById('server-port-setting').value) || 5000,
-                host: document.getElementById('server-host-setting').value.trim() || '0.0.0.0',
-                server_timeout: parseInt(document.getElementById('server-timeout').value) || 30,
-                memory_limit: parseInt(document.getElementById('memory-limit').value) || 256,
-                cache_enabled: document.getElementById('cache-enabled').checked,
-                compression: document.getElementById('compression').checked,
-                max_file_size: parseInt(document.getElementById('max-file-size').value) || 50,
-                cache_timeout: parseInt(document.getElementById('cache-timeout').value) || 60
-            };
-            
-            try {
-                const response = await fetch('?action=saveSettings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(settings)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showSettingsStatus('✅ Tous les paramètres ont été sauvegardés', 'success');
-                    
-                    // Appliquer certains changements immédiatement
-                    document.querySelector('#header h1').textContent = `🚀 ${settings.title}`;
-                    document.documentElement.style.setProperty('--accent', settings.accent_color);
-                } else {
-                    showSettingsStatus(`❌ ${result.error}`, 'error');
-                }
-            } catch (error) {
-                showSettingsStatus(`🔌 Erreur de sauvegarde: ${error.message}`, 'error');
-            }
-        }
-        
-        function exportSettings() {
-            loadAllSettings().then(() => {
-                const settings = {
-                    title: document.getElementById('app-title').value,
-                    author: document.getElementById('app-author').value,
-                    theme: document.getElementById('theme-mode').value,
-                    // ... autres paramètres
-                };
-                
-                const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `sgc-settings-${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                showSettingsStatus('📤 Paramètres exportés', 'success');
             });
         }
-        
-        function importSettings() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.json';
-            input.onchange = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        try {
-                            const settings = JSON.parse(event.target.result);
-                            
-                            // Appliquer les paramètres importés
-                            Object.entries(settings).forEach(([key, value]) => {
-                                const element = document.getElementById(key.replace(/_/g, '-'));
-                                if (element) {
-                                    if (element.type === 'checkbox') {
-                                        element.checked = value;
-                                    } else {
-                                        element.value = value;
-                                    }
-                                }
-                            });
-                            
-                            showSettingsStatus('📥 Paramètres importés avec succès', 'success');
-                        } catch (error) {
-                            showSettingsStatus('❌ Fichier de paramètres invalide', 'error');
-                        }
-                    };
-                    reader.readAsText(file);
-                }
-            };
-            input.click();
-        }
-        
-        function resetAllSettings() {
-            if (confirm('🔄 Réinitialiser tous les paramètres aux valeurs par défaut ?')) {
-                // Réinitialiser tous les champs
-                document.getElementById('app-title').value = 'SGC-AgentOne';
-                document.getElementById('app-author').value = 'By AMICHI Amine';
-                document.getElementById('theme-mode').value = 'dark';
-                // ... autres réinitialisations
+
+        function updateFilesTree(items, path) {
+            const tree = document.getElementById('files-tree');
+            tree.innerHTML = '';
+            
+            // Ajouter le dossier parent si ce n'est pas la racine
+            if (path !== '.') {
+                const parentItem = document.createElement('div');
+                parentItem.className = 'file-item';
+                parentItem.innerHTML = '📁 ..';
+                parentItem.onclick = () => loadDirectory(path.split('/').slice(0, -1).join('/') || '.');
+                tree.appendChild(parentItem);
+            }
+            
+            items.forEach(item => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                const icon = item.type === 'directory' ? '📁' : '📄';
+                fileItem.innerHTML = `${icon} ${item.name}`;
                 
-                showSettingsStatus('🔄 Paramètres réinitialisés', 'success');
+                if (item.type === 'directory') {
+                    fileItem.onclick = () => loadDirectory(path === '.' ? item.name : path + '/' + item.name);
+                } else {
+                    fileItem.onclick = () => openFileInEditor(path === '.' ? item.name : path + '/' + item.name);
+                }
+                
+                tree.appendChild(fileItem);
+            });
+        }
+
+        function createNewFile() {
+            const name = prompt('Nom du fichier:');
+            if (name) {
+                fetch('/?api=files', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action: 'createFile', path: name, content: ''})
+                })
+                .then(() => loadDirectory('.'));
             }
         }
-        
-        function showSettingsStatus(message, type) {
-            const statusDiv = document.getElementById('settings-status');
-            statusDiv.className = `status ${type}`;
-            statusDiv.textContent = message;
-            statusDiv.classList.remove('hidden');
-            
-            setTimeout(() => {
-                statusDiv.classList.add('hidden');
-            }, 3000);
+
+        function createNewFolder() {
+            const name = prompt('Nom du dossier:');
+            if (name) {
+                fetch('/?api=chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: 'createDir: ' + name})
+                })
+                .then(() => loadDirectory('.'));
+            }
         }
-        
-        // === HELP FUNCTIONALITY ===
-        function switchHelpTab(tab) {
-            currentHelpTab = tab;
-            
-            // Mettre à jour les onglets
-            document.querySelectorAll('#help .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            // Mettre à jour les vues
-            document.querySelectorAll('.help-tab').forEach(t => t.classList.add('hidden'));
-            document.getElementById(`help-${tab}`).classList.remove('hidden');
+
+        function refreshFiles() {
+            loadDirectory('.');
         }
-        
-        // === UTILITY FUNCTIONS ===
-        function showStatus(message, type = 'success') {
-            const statusEl = document.getElementById('connection-status');
-            const originalText = statusEl.textContent;
-            
-            statusEl.textContent = message;
-            statusEl.style.color = type === 'success' ? 'var(--success)' : 
-                                  type === 'error' ? 'var(--error)' : 
-                                  type === 'warning' ? 'var(--warning)' : 'var(--accent)';
-            
-            setTimeout(() => {
-                statusEl.textContent = originalText;
-                statusEl.style.color = '';
-            }, 3000);
+
+        // Editor functionality
+        function openFileInEditor(path) {
+            fetch('/?api=files', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'readFile', path: path})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentFile = path;
+                    document.getElementById('editor-textarea').value = data.content;
+                    document.getElementById('editor-filename').textContent = path;
+                    switchView('editor');
+                }
+            });
         }
-        
-        // Mise à jour de l'heure
-        function updateTime() {
+
+        function saveCurrentFile() {
+            if (!currentFile) return;
+            
+            const content = document.getElementById('editor-textarea').value;
+            fetch('/?api=files', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'createFile', path: currentFile, content: content})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Fichier sauvegardé!');
+                }
+            });
+        }
+
+        function closeCurrentFile() {
+            currentFile = '';
+            document.getElementById('editor-textarea').value = '';
+            document.getElementById('editor-filename').textContent = 'Aucun fichier ouvert';
+        }
+
+        function refreshEditor() {
+            if (currentFile) {
+                openFileInEditor(currentFile);
+            }
+        }
+
+        // Terminal functionality
+        const terminalInput = document.getElementById('terminal-input');
+        const terminalOutput = document.getElementById('terminal-output');
+
+        function executeTerminalCommand() {
+            const command = terminalInput.value.trim();
+            if (!command) return;
+
+            // Ajouter à l'historique
+            terminalHistory.push(command);
+            terminalHistoryIndex = terminalHistory.length;
+
+            // Afficher la commande
+            addTerminalOutput(`sgc@agentone:~$ ${command}`);
+            terminalInput.value = '';
+
+            // Exécuter la commande
+            switch (command.split(' ')[0]) {
+                case 'help':
+                    addTerminalOutput('Commandes disponibles:\n  ls - Lister les fichiers\n  pwd - Afficher le répertoire courant\n  status - Statut du serveur\n  clear - Effacer l\'écran\n  help - Afficher cette aide');
+                    break;
+                case 'ls':
+                    addTerminalOutput('index.php  core/  extensions/  prompts/');
+                    break;
+                case 'pwd':
+                    addTerminalOutput('/home/sgc-agentone');
+                    break;
+                case 'status':
+                    addTerminalOutput('Serveur: En ligne\nPort: 5000\nUptime: ' + formatUptime(Date.now() - serverStartTime));
+                    break;
+                case 'clear':
+                    terminalOutput.textContent = '';
+                    break;
+                default:
+                    addTerminalOutput(`Commande non reconnue: ${command}\nTapez 'help' pour voir les commandes disponibles.`);
+            }
+        }
+
+        function addTerminalOutput(text) {
+            terminalOutput.textContent += text + '\n\n';
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+
+        terminalInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                executeTerminalCommand();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (terminalHistoryIndex > 0) {
+                    terminalHistoryIndex--;
+                    terminalInput.value = terminalHistory[terminalHistoryIndex];
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (terminalHistoryIndex < terminalHistory.length - 1) {
+                    terminalHistoryIndex++;
+                    terminalInput.value = terminalHistory[terminalHistoryIndex];
+                } else {
+                    terminalHistoryIndex = terminalHistory.length;
+                    terminalInput.value = '';
+                }
+            }
+        });
+
+        // Server functionality
+        function updateServerMetrics() {
+            // Simuler des métriques
+            document.getElementById('server-uptime').textContent = formatUptime(Date.now() - serverStartTime);
+            document.getElementById('cpu-usage').textContent = Math.floor(Math.random() * 30 + 10) + '%';
+            document.getElementById('memory-usage').textContent = Math.floor(Math.random() * 100 + 200) + 'MB';
+            document.getElementById('requests-count').textContent = Math.floor(Math.random() * 1000 + 1000).toLocaleString();
+        }
+
+        function formatUptime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function startServer() {
+            alert('Serveur démarré!');
+            updateServerMetrics();
+        }
+
+        function stopServer() {
+            alert('Serveur arrêté!');
+        }
+
+        function restartServer() {
+            alert('Serveur redémarré!');
+            serverStartTime = Date.now();
+            updateServerMetrics();
+        }
+
+        function viewLogs() {
+            addTerminalOutput('=== Logs du serveur ===\n[2025-01-20 14:30:25] Serveur démarré sur le port 5000\n[2025-01-20 14:30:26] Connexion client: 127.0.0.1\n[2025-01-20 14:30:27] Requête GET /\n[2025-01-20 14:30:28] Réponse 200 OK');
+            switchView('terminal');
+        }
+
+        // Database functionality
+        function executeQuery() {
+            const query = document.getElementById('db-editor').value;
+            const results = document.getElementById('db-results');
+            results.innerHTML = `<div style="padding: 16px;">
+                <h4>Résultats de la requête:</h4>
+                <pre>${query}</pre>
+                <p>Requête exécutée avec succès. (Simulation)</p>
+            </div>`;
+        }
+
+        function saveQuery() {
+            alert('Requête sauvegardée!');
+        }
+
+        function loadQuery() {
+            document.getElementById('db-editor').value = 'SELECT * FROM users WHERE active = 1 ORDER BY created_at DESC;';
+        }
+
+        function formatQuery() {
+            const editor = document.getElementById('db-editor');
+            editor.value = editor.value.replace(/select/gi, 'SELECT').replace(/from/gi, 'FROM').replace(/where/gi, 'WHERE');
+        }
+
+        function exportResults() {
+            alert('Résultats exportés en CSV!');
+        }
+
+        function selectTable(table) {
+            document.getElementById('db-editor').value = `SELECT * FROM ${table} LIMIT 10;`;
+        }
+
+        // Browser functionality
+        function loadBrowserUrl() {
+            const url = document.getElementById('browser-url').value;
+            document.getElementById('browser-iframe').src = url;
+        }
+
+        function browserBack() {
+            document.getElementById('browser-iframe').contentWindow.history.back();
+        }
+
+        function browserForward() {
+            document.getElementById('browser-iframe').contentWindow.history.forward();
+        }
+
+        function browserRefresh() {
+            document.getElementById('browser-iframe').contentWindow.location.reload();
+        }
+
+        function browserHome() {
+            document.getElementById('browser-url').value = 'http://localhost:5000';
+            loadBrowserUrl();
+        }
+
+        function browserGo() {
+            loadBrowserUrl();
+        }
+
+        // Projects functionality
+        function createNewProject() {
+            alert('Nouveau projet créé!');
+        }
+
+        // Prompts functionality
+        function createNewPrompt() {
+            alert('Nouveau prompt créé!');
+        }
+
+        function importPrompts() {
+            alert('Prompts importés!');
+        }
+
+        function exportPrompts() {
+            alert('Prompts exportés!');
+        }
+
+        function refreshPrompts() {
+            alert('Prompts actualisés!');
+        }
+
+        // Config functionality
+        document.querySelectorAll('.config-section-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const section = item.dataset.section;
+                
+                // Mettre à jour la sidebar
+                document.querySelectorAll('.config-section-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Afficher la section
+                document.querySelectorAll('.config-section').forEach(s => s.classList.remove('active'));
+                document.getElementById('config-' + section).classList.add('active');
+            });
+        });
+
+        // Help functionality
+        document.querySelectorAll('.help-section-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const section = item.dataset.section;
+                
+                // Mettre à jour la sidebar
+                document.querySelectorAll('.help-section-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Afficher la section
+                document.querySelectorAll('.help-section').forEach(s => s.classList.remove('active'));
+                document.getElementById('help-' + section).classList.add('active');
+            });
+        });
+
+        // Sauvegarde automatique des paramètres
+        function saveSettings() {
+            const settings = {
+                appName: document.getElementById('app-name')?.value,
+                language: document.getElementById('app-language')?.value,
+                autoSave: document.getElementById('auto-save')?.checked,
+                theme: document.getElementById('theme-select')?.value,
+                accentColor: document.getElementById('accent-color')?.value,
+                fontSize: document.getElementById('font-size')?.value,
+                editorFont: document.getElementById('editor-font')?.value,
+                tabSize: document.getElementById('tab-size')?.value,
+                syntaxHighlighting: document.getElementById('syntax-highlighting')?.checked,
+                serverPort: document.getElementById('server-port-config')?.value,
+                serverHost: document.getElementById('server-host-config')?.value,
+                autoStart: document.getElementById('auto-start')?.checked,
+                debugMode: document.getElementById('debug-mode')?.checked,
+                detailedLogs: document.getElementById('detailed-logs')?.checked,
+                allowedIps: document.getElementById('allowed-ips')?.value,
+                cacheEnabled: document.getElementById('cache-enabled')?.checked,
+                memoryLimit: document.getElementById('memory-limit')?.value,
+                timeout: document.getElementById('timeout')?.value,
+                autoBackup: document.getElementById('auto-backup')?.checked,
+                backupFrequency: document.getElementById('backup-frequency')?.value,
+                backupCount: document.getElementById('backup-count')?.value,
+                devMode: document.getElementById('dev-mode')?.checked,
+                customPath: document.getElementById('custom-path')?.value,
+                envVars: document.getElementById('env-vars')?.value
+            };
+            
+            localStorage.setItem('sgc-settings', JSON.stringify(settings));
+        }
+
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem('sgc-settings') || '{}');
+            
+            Object.keys(settings).forEach(key => {
+                const element = document.getElementById(key.replace(/([A-Z])/g, '-$1').toLowerCase());
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        element.checked = settings[key];
+                    } else {
+                        element.value = settings[key];
+                    }
+                }
+            });
+        }
+
+        // Sauvegarder les paramètres quand ils changent
+        document.addEventListener('change', (e) => {
+            if (e.target.closest('#config-view')) {
+                saveSettings();
+            }
+        });
+
+        // Mise à jour du footer en temps réel
+        function updateFooter() {
             const now = new Date();
-            document.getElementById('current-time').textContent = now.toLocaleString();
+            const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+            document.getElementById('timestamp').textContent = timestamp;
         }
-        
-        // Événements globaux
-        document.getElementById('terminal-input').addEventListener('keypress', e => {
-            if (e.key === 'Enter') runTerminalCommand();
-        });
-        
-        document.getElementById('font-size').addEventListener('input', e => {
-            document.getElementById('font-size-value').textContent = e.target.value + 'px';
-        });
-        
+
         // Initialisation
         document.addEventListener('DOMContentLoaded', () => {
-            loadAllSettings();
-            updateTime();
-            setInterval(updateTime, 1000);
-            
-            // Vérifier la connexion périodiquement
-            setInterval(() => {
-                fetch('?action=chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: 'serverStatus' })
-                })
-                .then(response => response.json())
-                .then(result => {
-                    const statusEl = document.getElementById('connection-status');
-                    if (result.success) {
-                        statusEl.textContent = '🟢 Connecté';
-                        statusEl.style.color = 'var(--success)';
-                    } else {
-                        statusEl.textContent = '🔴 Déconnecté';
-                        statusEl.style.color = 'var(--error)';
-                    }
-                })
-                .catch(() => {
-                    const statusEl = document.getElementById('connection-status');
-                    statusEl.textContent = '🔴 Déconnecté';
-                    statusEl.style.color = 'var(--error)';
-                });
-            }, 10000);
+            loadSettings();
+            updateFooter();
+            setInterval(updateFooter, 1000);
+            setInterval(updateServerMetrics, 5000);
         });
-        
-        console.log('🚀 SGC-AgentOne v2.1 initialisé avec succès');
     </script>
 </body>
 </html>

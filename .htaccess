@@ -1,152 +1,39 @@
-# Configuration Apache pour SGC-AgentOne v2.0
-# Compatible : XAMPP local, serveur mutualisé, sous-dossiers
-# Corrections complètes pour résoudre les problèmes de chemins
-
+# SGC-AgentOne v2.1 - Configuration Apache Simple
 <IfModule mod_rewrite.c>
     RewriteEngine On
     
-    # Détection automatique de la base URL (compatible sous-dossiers)
-    RewriteBase /
-
-    # Redirection principale : tout vers index.php sauf exceptions
+    # Redirection vers index.php pour toutes les requêtes
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_URI} !^.*/api/.*$
-    RewriteCond %{REQUEST_URI} !^.*/extensions/webview/.*$
-    RewriteCond %{REQUEST_URI} !^.*/diagnostic\.php$
     RewriteRule ^(.*)$ index.php [QSA,L]
     
-    # Sécurité : bloquer l'accès direct aux dossiers sensibles
-    RewriteRule ^core/(?!$) - [F,L]
-    RewriteRule ^core/logs/ - [F,L]
-    RewriteRule ^core/db/ - [F,L]
-    RewriteRule ^core/config/ - [F,L]
-    RewriteRule ^prompts/ - [F,L]
-    
-    # Autoriser explicitement les ressources nécessaires
-    RewriteRule ^extensions/webview/ - [L]
-    RewriteRule ^api/ - [L]
-    RewriteRule ^diagnostic\.php$ - [L]
-    
-    # Headers de sécurité
+    # Sécurité de base
+    RewriteRule ^core/ - [F,L]
+    RewriteRule ^api/(?!chat\.php$) - [F,L]
+</IfModule>
+
+# Headers de sécurité
+<IfModule mod_headers.c>
     Header always set X-Content-Type-Options nosniff
     Header always set X-Frame-Options SAMEORIGIN
     Header always set X-XSS-Protection "1; mode=block"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# Configuration générale
-Options -Indexes -MultiViews
-AddDefaultCharset UTF-8
-
-# Gestion des erreurs personnalisées
-ErrorDocument 403 /index.php?error=403
-ErrorDocument 404 /index.php?error=404
-ErrorDocument 500 /index.php?error=500
-
-# Types MIME pour les ressources web
+# Types MIME
 <IfModule mod_mime.c>
     AddType text/css .css
     AddType application/javascript .js
     AddType application/json .json
-    AddType text/html .html
-    AddType text/plain .md
-    AddType text/plain .txt
-    AddType text/plain .log
 </IfModule>
 
-# Compression GZIP pour optimiser les performances
+# Compression
 <IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/plain
-    AddOutputFilterByType DEFLATE text/html
-    AddOutputFilterByType DEFLATE text/xml
-    AddOutputFilterByType DEFLATE text/css
-    AddOutputFilterByType DEFLATE application/xml
-    AddOutputFilterByType DEFLATE application/xhtml+xml
-    AddOutputFilterByType DEFLATE application/rss+xml
-    AddOutputFilterByType DEFLATE application/javascript
-    AddOutputFilterByType DEFLATE application/x-javascript
-    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
 </IfModule>
 
-# Cache pour les ressources statiques
+# Cache
 <IfModule mod_expires.c>
     ExpiresActive On
     ExpiresByType text/css "access plus 1 month"
     ExpiresByType application/javascript "access plus 1 month"
-    ExpiresByType image/png "access plus 1 month"
-    ExpiresByType image/jpg "access plus 1 month"
-    ExpiresByType image/jpeg "access plus 1 month"
-    ExpiresByType image/gif "access plus 1 month"
-    ExpiresByType image/svg+xml "access plus 1 month"
-    ExpiresByType application/json "access plus 1 hour"
-    ExpiresByType text/html "access plus 1 hour"
-</IfModule>
-
-# Sécurité des fichiers sensibles
-<Files "*.log">
-    Order allow,deny
-    Deny from all
-</Files>
-
-<Files "*.json">
-    <RequireAll>
-        Require all denied
-        Require local
-    </RequireAll>
-</Files>
-
-<Files ".htaccess">
-    Order allow,deny
-    Deny from all
-</Files>
-
-<Files "diagnostic.php">
-    Order allow,deny
-    Allow from all
-</Files>
-
-# Configuration CORS pour l'API (développement et production)
-<IfModule mod_headers.c>
-    # CORS pour localhost et 127.0.0.1
-    SetEnvIf Origin "^http(s)?://localhost(:[0-9]+)?$" CORS_ALLOW_ORIGIN=$0
-    SetEnvIf Origin "^http(s)?://127\.0\.0\.1(:[0-9]+)?$" CORS_ALLOW_ORIGIN=$0
-    
-    # Headers CORS
-    Header always set Access-Control-Allow-Origin %{CORS_ALLOW_ORIGIN}e env=CORS_ALLOW_ORIGIN
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-    Header always set Access-Control-Allow-Credentials true
-    
-    # Gestion des requêtes OPTIONS (preflight)
-    RewriteCond %{REQUEST_METHOD} OPTIONS
-    RewriteRule ^(.*)$ $1 [R=200,L]
-</IfModule>
-
-# Optimisations PHP (si .htaccess peut modifier la config PHP)
-<IfModule mod_php.c>
-    php_value max_execution_time 300
-    php_value memory_limit 256M
-    php_value upload_max_filesize 50M
-    php_value post_max_size 50M
-    php_flag file_uploads On
-    php_flag session.auto_start Off
-    php_flag log_errors On
-    php_value error_log "core/logs/php_errors.log"
-</IfModule>
-
-# Protection contre les attaques communes
-<IfModule mod_rewrite.c>
-    # Bloquer les tentatives d'injection SQL
-    RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
-    RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
-    RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2}) [OR]
-    RewriteCond %{QUERY_STRING} (\<|%3C).*iframe.*(\>|%3E) [NC,OR]
-    RewriteCond %{QUERY_STRING} (\<|%3C).*object.*(\>|%3E) [NC,OR]
-    RewriteCond %{QUERY_STRING} (\<|%3C).*embed.*(\>|%3E) [NC]
-    RewriteRule ^(.*)$ - [F,L]
-    
-    # Bloquer les path traversal
-    RewriteCond %{QUERY_STRING} \.\./\.\./\.\./
-    RewriteRule ^(.*)$ - [F,L]
 </IfModule>

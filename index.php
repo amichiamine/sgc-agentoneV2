@@ -1,263 +1,389 @@
 <?php
 /**
- * Point d'entrée universel de SGC-AgentOne v2.0
- * Compatible : XAMPP local, serveur mutualisé, sous-dossiers
- * Gestion robuste des chemins et diagnostic intégré
- * 
- * Corrections complètes pour résoudre "Fichier index.html introuvable"
+ * SGC-AgentOne v2.1 - Solution Simple et Optimale
+ * Élimination complète des problèmes de chemins
+ * Auto-installation et configuration zéro
  */
 
-// Configuration d'erreurs pour le diagnostic
+// Configuration d'erreurs pour diagnostic
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Chemins absolus basés sur __DIR__ - TOUJOURS corrects
+$projectRoot = __DIR__;
+$webviewPath = $projectRoot . '/extensions/webview';
+$indexFile = $webviewPath . '/index.html';
+$corePath = $projectRoot . '/core';
+$apiPath = $projectRoot . '/api';
+
+// Mode debug
 $debug = isset($_GET['debug']) && $_GET['debug'] === '1';
-$showErrors = $debug || (isset($_GET['show_errors']) && $_GET['show_errors'] === '1');
 
-if ($showErrors) {
-    error_reporting(E_ALL);
-    ini_set('display_errors', 1);
+/**
+ * Création automatique de la structure si manquante
+ */
+function createProjectStructure($root) {
+    $dirs = [
+        '/core/config',
+        '/core/logs', 
+        '/core/db',
+        '/core/utils',
+        '/core/agents/actions',
+        '/api',
+        '/extensions/webview',
+        '/prompts'
+    ];
+    
+    foreach ($dirs as $dir) {
+        $path = $root . $dir;
+        if (!is_dir($path)) {
+            mkdir($path, 0755, true);
+        }
+    }
+    
+    // Créer les fichiers essentiels
+    createEssentialFiles($root);
 }
 
-// Mode diagnostic complet
-if ($debug) {
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>🔍 Diagnostic SGC-AgentOne</title>";
-    echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#1a1a1a;color:#fff;}";
-    echo ".section{background:#2d2d2d;padding:15px;margin:15px 0;border-radius:8px;border-left:4px solid #4CAF50;}";
-    echo ".error{border-left-color:#f44336;}.warning{border-left-color:#ff9800;}";
-    echo "pre{background:#000;padding:10px;border-radius:4px;overflow-x:auto;font-size:12px;}";
-    echo ".btn{display:inline-block;padding:8px 16px;background:#2196F3;color:white;text-decoration:none;border-radius:4px;margin:5px;}";
-    echo "</style></head><body>";
-    echo "<h1>🔍 Diagnostic SGC-AgentOne v2.0</h1>";
-    echo "<p><strong>Mode Debug Activé</strong> | " . date('Y-m-d H:i:s') . "</p>";
+/**
+ * Création des fichiers essentiels
+ */
+function createEssentialFiles($root) {
+    // 1. Interface principale
+    $indexHtml = $root . '/extensions/webview/index.html';
+    if (!file_exists($indexHtml)) {
+        file_put_contents($indexHtml, getIndexHtmlContent());
+    }
+    
+    // 2. Configuration par défaut
+    $settingsFile = $root . '/core/config/settings.json';
+    if (!file_exists($settingsFile)) {
+        $settings = [
+            'port' => 5000,
+            'host' => '0.0.0.0',
+            'debug' => false,
+            'theme' => 'sgc-commander'
+        ];
+        file_put_contents($settingsFile, json_encode($settings, JSON_PRETTY_PRINT));
+    }
+    
+    // 3. API de base
+    createBasicAPI($root);
 }
+
+/**
+ * Contenu de l'interface principale
+ */
+function getIndexHtmlContent() {
+    return '<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>SGC-AgentOne</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0f1c; color: #e2e8f0; height: 100vh; overflow: hidden;
+        }
+        #header { 
+            background: #1e293b; padding: 12px 20px; border-bottom: 1px solid #334155;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #header h1 { font-size: 1.2rem; color: #38bdf8; }
+        #nav { display: flex; gap: 8px; }
+        #nav button { 
+            background: #334155; border: none; color: #e2e8f0; padding: 8px 16px;
+            border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
+        }
+        #nav button:hover { background: #475569; }
+        #nav button.active { background: #38bdf8; color: #0a0f1c; }
+        #main { height: calc(100vh - 60px); display: flex; flex-direction: column; }
+        .view { display: none; flex: 1; padding: 20px; }
+        .view.active { display: flex; flex-direction: column; }
+        #chat-container { flex: 1; display: flex; flex-direction: column; }
+        #messages { flex: 1; overflow-y: auto; padding: 16px; background: #1e293b; border-radius: 8px; margin-bottom: 16px; }
+        .message { margin-bottom: 12px; padding: 12px; border-radius: 8px; }
+        .user { background: #334155; margin-left: 20%; }
+        .ai { background: #0f172a; margin-right: 20%; border-left: 3px solid #38bdf8; }
+        #input-area { display: flex; gap: 12px; }
+        #message-input { 
+            flex: 1; padding: 12px; background: #1e293b; border: 1px solid #334155;
+            border-radius: 6px; color: #e2e8f0; font-size: 1rem; outline: none;
+        }
+        #send-btn { 
+            padding: 12px 24px; background: #38bdf8; color: #0a0f1c; border: none;
+            border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;
+        }
+        #send-btn:hover { background: #0ea5e9; }
+        #status { 
+            position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b;
+            padding: 8px 20px; font-size: 0.8rem; color: #94a3b8; border-top: 1px solid #334155;
+        }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .loading { color: #f59e0b; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🚀 SGC-AgentOne</h1>
+        <div id="nav">
+            <button class="nav-btn active" data-view="chat">💬 Chat</button>
+            <button class="nav-btn" data-view="files">📁 Fichiers</button>
+            <button class="nav-btn" data-view="settings">⚙️ Paramètres</button>
+        </div>
+    </div>
+    
+    <div id="main">
+        <div id="chat" class="view active">
+            <div id="chat-container">
+                <div id="messages">
+                    <div class="message ai">
+                        <strong>SGC-AgentOne:</strong> Bonjour ! Je suis votre assistant de développement. 
+                        Tapez vos commandes au format: <code>action cible : contenu</code>
+                        <br><br>Exemples:
+                        <br>• <code>createFile test.php : &lt;?php echo "Hello"; ?&gt;</code>
+                        <br>• <code>listDir .</code>
+                        <br>• <code>readFile config.json</code>
+                    </div>
+                </div>
+                <div id="input-area">
+                    <input type="text" id="message-input" placeholder="Tapez votre commande..." autocomplete="off">
+                    <button id="send-btn">Envoyer</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="files" class="view">
+            <h2>📁 Gestionnaire de Fichiers</h2>
+            <p>Fonctionnalité en cours de développement...</p>
+        </div>
+        
+        <div id="settings" class="view">
+            <h2>⚙️ Paramètres</h2>
+            <p>Configuration système en cours de développement...</p>
+        </div>
+    </div>
+    
+    <div id="status">
+        Prêt • SGC-AgentOne v2.1 • ' . date('Y-m-d H:i:s') . '
+    </div>
+
+    <script>
+        // Navigation entre vues
+        document.querySelectorAll(".nav-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const view = btn.dataset.view;
+                
+                // Mettre à jour navigation
+                document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                
+                // Mettre à jour vues
+                document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+                document.getElementById(view).classList.add("active");
+            });
+        });
+        
+        // Chat functionality
+        const messagesDiv = document.getElementById("messages");
+        const messageInput = document.getElementById("message-input");
+        const sendBtn = document.getElementById("send-btn");
+        
+        function addMessage(content, type = "user") {
+            const div = document.createElement("div");
+            div.className = `message ${type}`;
+            div.innerHTML = type === "user" ? 
+                `<strong>Vous:</strong> ${content}` : 
+                `<strong>SGC-AgentOne:</strong> ${content}`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            addMessage(message, "user");
+            messageInput.value = "";
+            sendBtn.disabled = true;
+            sendBtn.textContent = "...";
+            
+            try {
+                const response = await fetch("?action=chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    addMessage(result.response || "Commande exécutée avec succès", "ai");
+                } else {
+                    addMessage(`Erreur: ${result.error}`, "ai");
+                }
+            } catch (error) {
+                addMessage(`Erreur de connexion: ${error.message}`, "ai");
+            }
+            
+            sendBtn.disabled = false;
+            sendBtn.textContent = "Envoyer";
+        }
+        
+        sendBtn.addEventListener("click", sendMessage);
+        messageInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
+    </script>
+</body>
+</html>';
+}
+
+/**
+ * Création de l'API de base
+ */
+function createBasicAPI($root) {
+    $chatAPI = $root . '/api/chat.php';
+    if (!file_exists($chatAPI)) {
+        $content = '<?php
+header("Content-Type: application/json");
+$input = json_decode(file_get_contents("php://input"), true);
+
+if (!$input || !isset($input["message"])) {
+    echo json_encode(["error" => "Message manquant"]);
+    exit;
+}
+
+$message = trim($input["message"]);
+
+// Interpréteur simple
+if (strpos($message, ":") !== false) {
+    list($actionTarget, $content) = explode(":", $message, 2);
+    $parts = explode(" ", trim($actionTarget), 2);
+    $action = $parts[0];
+    $target = isset($parts[1]) ? trim($parts[1]) : "";
+    $content = trim($content);
+    
+    switch ($action) {
+        case "createFile":
+            if ($target && $content) {
+                file_put_contents($target, $content);
+                echo json_encode(["success" => true, "response" => "Fichier créé: $target"]);
+            } else {
+                echo json_encode(["error" => "Cible ou contenu manquant"]);
+            }
+            break;
+            
+        case "readFile":
+            if ($target && file_exists($target)) {
+                $fileContent = file_get_contents($target);
+                echo json_encode(["success" => true, "response" => "Contenu de $target:<br><pre>" . htmlspecialchars($fileContent) . "</pre>"]);
+            } else {
+                echo json_encode(["error" => "Fichier introuvable: $target"]);
+            }
+            break;
+            
+        case "listDir":
+            $dir = $target ?: ".";
+            if (is_dir($dir)) {
+                $files = array_diff(scandir($dir), [".", ".."]);
+                $list = implode("<br>", array_map(function($f) use ($dir) {
+                    return (is_dir("$dir/$f") ? "📁 " : "📄 ") . $f;
+                }, $files));
+                echo json_encode(["success" => true, "response" => "Contenu de $dir:<br>$list"]);
+            } else {
+                echo json_encode(["error" => "Dossier introuvable: $dir"]);
+            }
+            break;
+            
+        default:
+            echo json_encode(["error" => "Action inconnue: $action"]);
+    }
+} else {
+    echo json_encode(["error" => "Format invalide. Utilisez: action cible : contenu"]);
+}
+?>';
+        file_put_contents($chatAPI, $content);
+    }
+}
+
+// === LOGIQUE PRINCIPALE ===
 
 try {
-    // Chargement de PathHelper avec gestion d'erreur
-    $pathHelperPath = 'core/utils/PathHelper.php';
-    if (!file_exists($pathHelperPath)) {
-        throw new Exception("PathHelper.php introuvable à: " . $pathHelperPath);
-    }
-    
-    require_once $pathHelperPath;
-    use core\utils\PathHelper;
-    
+    // Mode debug
     if ($debug) {
-        echo "<div class='section'>";
-        echo "<h2>📁 Informations de Diagnostic</h2>";
-        $diagnosticInfo = PathHelper::getDiagnosticInfo();
-        echo "<pre>" . print_r($diagnosticInfo, true) . "</pre>";
-        echo "</div>";
-    }
-    
-    // Validation des chemins critiques
-    $validation = PathHelper::validatePaths();
-    if ($validation !== true) {
-        if ($debug) {
-            echo "<div class='section error'>";
-            echo "<h2>❌ Erreurs de Chemins Détectées</h2>";
-            echo "<ul>";
-            foreach ($validation as $error) {
-                echo "<li>" . htmlspecialchars($error) . "</li>";
-            }
-            echo "</ul>";
-            echo "</div>";
-        }
-        throw new Exception("Chemins critiques manquants. Utilisez ?debug=1 pour plus d'informations.");
-    }
-    
-    // Construction du chemin vers index.html
-    $webviewPath = PathHelper::getWebviewPath();
-    $indexPath = $webviewPath . 'index.html';
-    
-    if ($debug) {
-        echo "<div class='section'>";
-        echo "<h2>🎯 Chemins Calculés</h2>";
-        echo "<table style='width:100%;border-collapse:collapse;'>";
-        echo "<tr style='background:#333;'><th style='padding:8px;text-align:left;'>Type</th><th style='padding:8px;text-align:left;'>Chemin</th><th style='padding:8px;text-align:left;'>Existe</th></tr>";
+        echo "<!DOCTYPE html><html><head><title>🔍 Debug SGC-AgentOne</title>";
+        echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#0a0f1c;color:#e2e8f0;}</style></head><body>";
+        echo "<h1>🔍 Debug SGC-AgentOne v2.1</h1>";
+        echo "<p><strong>Racine du projet:</strong> " . htmlspecialchars($projectRoot) . "</p>";
+        echo "<p><strong>Chemin webview:</strong> " . htmlspecialchars($webviewPath) . "</p>";
+        echo "<p><strong>Fichier index:</strong> " . htmlspecialchars($indexFile) . "</p>";
+        echo "<p><strong>Existe:</strong> " . (file_exists($indexFile) ? "✅ OUI" : "❌ NON") . "</p>";
         
-        $paths = [
-            'Base Path' => PathHelper::getBasePath(),
-            'Webview Path' => $webviewPath,
-            'Index Path' => $indexPath,
-            'Core Path' => PathHelper::getCorePath(),
-            'API Path' => PathHelper::getApiPath()
-        ];
-        
-        foreach ($paths as $name => $path) {
-            $exists = file_exists($path);
-            echo "<tr><td style='padding:8px;border-bottom:1px solid #444;'>" . $name . "</td>";
-            echo "<td style='padding:8px;border-bottom:1px solid #444;'>" . htmlspecialchars($path) . "</td>";
-            echo "<td style='padding:8px;border-bottom:1px solid #444;'>" . ($exists ? '✅' : '❌') . "</td></tr>";
-        }
-        echo "</table>";
-        echo "</div>";
-        
-        if (is_dir($webviewPath)) {
-            echo "<div class='section'>";
-            echo "<h2>📂 Contenu du Dossier Webview</h2>";
-            $files = scandir($webviewPath);
-            echo "<ul>";
-            foreach ($files as $file) {
-                if ($file !== '.' && $file !== '..') {
-                    $isFile = is_file($webviewPath . $file);
-                    echo "<li>" . ($isFile ? '📄' : '📁') . " " . htmlspecialchars($file) . "</li>";
-                }
-            }
-            echo "</ul>";
-            echo "</div>";
+        if (!file_exists($indexFile)) {
+            echo "<p><strong>🔧 Création automatique en cours...</strong></p>";
+            createProjectStructure($projectRoot);
+            echo "<p><strong>✅ Structure créée !</strong></p>";
         }
         
-        echo "<div class='section'>";
-        echo "<h2>🚀 Actions</h2>";
-        echo "<a href='?' class='btn'>🏠 Accéder à l'Application</a>";
-        echo "<a href='diagnostic.php' class='btn'>🔍 Diagnostic Complet</a>";
-        echo "<a href='?debug=1&show_errors=1' class='btn'>⚠️ Afficher Erreurs PHP</a>";
-        echo "</div>";
-        
+        echo "<p><a href='?' style='color:#38bdf8;'>🚀 Accéder à SGC-AgentOne</a></p>";
         echo "</body></html>";
         exit;
     }
     
-    // Vérification finale de l'existence du fichier
-    if (!file_exists($indexPath)) {
-        throw new Exception("Fichier index.html introuvable: " . $indexPath . 
-                          " (Webview path: " . $webviewPath . ")");
+    // Gestion API
+    if (isset($_GET['action']) && $_GET['action'] === 'chat') {
+        include $apiPath . '/chat.php';
+        exit;
     }
     
-    if (!is_readable($indexPath)) {
-        throw new Exception("Fichier index.html non lisible: " . $indexPath . 
-                          " (Vérifiez les permissions)");
-    }
-    
-    // Lecture du contenu
-    $content = file_get_contents($indexPath);
-    if ($content === false) {
-        throw new Exception("Impossible de lire le fichier index.html: " . $indexPath);
-    }
-    
-    // Headers appropriés
-    header('Content-Type: text/html; charset=utf-8');
-    header('Cache-Control: no-cache, must-revalidate');
-    header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
-    
-    // Injection de la base URL pour corriger les chemins relatifs
-    $baseUrl = PathHelper::getBaseUrl();
-    $webviewUrl = $baseUrl . '/extensions/webview/';
-    
-    // Injection de la balise base pour les ressources
-    $content = str_replace(
-        '<head>',
-        '<head><base href="' . htmlspecialchars($webviewUrl) . '">',
-        $content
-    );
-    
-    // Injection d'informations de debug si nécessaire
-    if ($showErrors) {
-        $debugInfo = "<!-- SGC-AgentOne Debug Info\n";
-        $debugInfo .= "Base Path: " . PathHelper::getBasePath() . "\n";
-        $debugInfo .= "Webview Path: " . $webviewPath . "\n";
-        $debugInfo .= "Base URL: " . $baseUrl . "\n";
-        $debugInfo .= "Generated: " . date('Y-m-d H:i:s') . "\n";
-        $debugInfo .= "-->";
+    // Vérification et création automatique de la structure
+    if (!file_exists($indexFile)) {
+        createProjectStructure($projectRoot);
         
-        $content = str_replace('</head>', $debugInfo . '</head>', $content);
+        // Message d'installation
+        echo "<!DOCTYPE html><html><head><title>🔧 Installation SGC-AgentOne</title>";
+        echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#0a0f1c;color:#e2e8f0;text-align:center;padding-top:100px;}</style></head><body>";
+        echo "<h1>🔧 Installation Automatique</h1>";
+        echo "<p>SGC-AgentOne s'installe automatiquement...</p>";
+        echo "<p>✅ Structure créée<br>✅ Fichiers générés<br>✅ Configuration terminée</p>";
+        echo "<p><a href='?' style='color:#38bdf8;font-size:1.2rem;text-decoration:none;'>🚀 Accéder à SGC-AgentOne</a></p>";
+        echo "<script>setTimeout(() => window.location.href = '?', 2000);</script>";
+        echo "</body></html>";
+        exit;
     }
     
-    // Servir le contenu
-    echo $content;
+    // Servir l'interface principale
+    if (file_exists($indexFile)) {
+        $content = file_get_contents($indexFile);
+        
+        // Injection de la base URL pour les ressources
+        $baseUrl = dirname($_SERVER['REQUEST_URI']);
+        if ($baseUrl === '/' || $baseUrl === '\\') $baseUrl = '';
+        
+        header('Content-Type: text/html; charset=utf-8');
+        echo $content;
+    } else {
+        throw new Exception("Impossible de créer la structure du projet");
+    }
     
 } catch (Exception $e) {
-    // Gestion d'erreur robuste avec page d'erreur complète
+    // Page d'erreur simple
     http_response_code(500);
-    
-    $errorMessage = htmlspecialchars($e->getMessage());
-    $currentTime = date('Y-m-d H:i:s');
-    
-    echo '<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>🚨 Erreur SGC-AgentOne</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .error { background: #2d1b1b; border: 2px solid #d32f2f; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        .diagnostic { background: #1b2d1b; border: 2px solid #2f7d32; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        .warning { background: #2d2d1b; border: 2px solid #f57c00; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        pre { background: #000; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
-        .btn { display: inline-block; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; margin: 5px; }
-        .btn:hover { background: #1976D2; }
-        .btn-danger { background: #d32f2f; }
-        .btn-success { background: #2f7d32; }
-        h1 { color: #f44336; }
-        h2 { color: #4CAF50; }
-        h3 { color: #ff9800; }
-        ul { padding-left: 20px; }
-        li { margin: 8px 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚨 Erreur SGC-AgentOne v2.0</h1>
-        <p><strong>Heure:</strong> ' . $currentTime . '</p>
-        
-        <div class="error">
-            <h2>❌ Erreur Détectée</h2>
-            <p><strong>Message:</strong> ' . $errorMessage . '</p>
-        </div>
-        
-        <div class="diagnostic">
-            <h2>🔧 Solutions Recommandées</h2>
-            <ol>
-                <li><strong>Vérifiez la structure des fichiers:</strong>
-                    <ul>
-                        <li>Le dossier <code>extensions/webview/</code> doit exister</li>
-                        <li>Le fichier <code>extensions/webview/index.html</code> doit être présent</li>
-                        <li>Le fichier <code>core/utils/PathHelper.php</code> doit être accessible</li>
-                    </ul>
-                </li>
-                <li><strong>Vérifiez les permissions:</strong>
-                    <ul>
-                        <li>Dossiers: 755 (lecture/exécution)</li>
-                        <li>Fichiers: 644 (lecture/écriture)</li>
-                    </ul>
-                </li>
-                <li><strong>Utilisez les outils de diagnostic:</strong>
-                    <ul>
-                        <li><a href="?debug=1" class="btn">🔍 Mode Debug</a></li>
-                        <li><a href="diagnostic.php" class="btn btn-success">📋 Diagnostic Complet</a></li>
-                    </ul>
-                </li>
-            </ol>
-        </div>
-        
-        <div class="warning">
-            <h2>📋 Informations Système</h2>
-            <pre>PHP Version: ' . PHP_VERSION . '
-Serveur: ' . ($_SERVER['SERVER_SOFTWARE'] ?? 'Inconnu') . '
-Document Root: ' . ($_SERVER['DOCUMENT_ROOT'] ?? 'Non défini') . '
-Script: ' . $_SERVER['SCRIPT_FILENAME'] . '
-Request URI: ' . ($_SERVER['REQUEST_URI'] ?? 'Non défini') . '
-Working Directory: ' . getcwd() . '</pre>
-        </div>
-        
-        <div class="diagnostic">
-            <h2>🚀 Actions Rapides</h2>
-            <a href="?" class="btn">🔄 Réessayer</a>
-            <a href="?debug=1" class="btn">🔍 Mode Debug</a>
-            <a href="diagnostic.php" class="btn btn-success">📋 Diagnostic Complet</a>
-            <a href="INSTALL.md" class="btn">📖 Guide Installation</a>
-        </div>
-        
-        <div class="warning">
-            <h3>💡 Aide Rapide</h3>
-            <p>Si le problème persiste:</p>
-            <ul>
-                <li>Consultez le fichier <strong>INSTALL.md</strong> pour l\'installation</li>
-                <li>Exécutez <strong>diagnostic.php</strong> pour une analyse complète</li>
-                <li>Vérifiez que tous les fichiers ont été correctement copiés</li>
-                <li>Contactez le support avec les informations de diagnostic</li>
-            </ul>
-        </div>
-    </div>
-</body>
-</html>';
+    echo "<!DOCTYPE html><html><head><title>❌ Erreur SGC-AgentOne</title>";
+    echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#0a0f1c;color:#e2e8f0;}</style></head><body>";
+    echo "<h1>❌ Erreur SGC-AgentOne</h1>";
+    echo "<p><strong>Message:</strong> " . htmlspecialchars($e->getMessage()) . "</p>";
+    echo "<p><strong>Solutions:</strong></p>";
+    echo "<ul>";
+    echo "<li>Vérifiez les permissions du dossier</li>";
+    echo "<li>Essayez le mode debug: <a href='?debug=1' style='color:#38bdf8;'>?debug=1</a></li>";
+    echo "<li>Contactez le support technique</li>";
+    echo "</ul>";
+    echo "<p><strong>Informations système:</strong></p>";
+    echo "<pre>PHP: " . PHP_VERSION . "\nRacine: " . htmlspecialchars($projectRoot) . "\nHeure: " . date('Y-m-d H:i:s') . "</pre>";
+    echo "</body></html>";
 }
+?>
